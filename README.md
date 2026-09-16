@@ -112,6 +112,14 @@ npm run test:cov
 
 ---
 
+## 🤝 Contribution & Git Guidelines
+
+For branch naming rules, Conventional Commits standard, and Pull Request workflow, please refer to our [Contributing & Git Workflow Guide](CONTRIBUTING.md).
+
+For AI Assistants and LLMs working on this codebase, refer to [.github/SYSTEM_PROMPT.md](.github/SYSTEM_PROMPT.md).
+
+---
+
 ## 📜 License
 
 This project is [MIT licensed](LICENSE).
