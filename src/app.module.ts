@@ -11,6 +11,9 @@ import { ResponseTransformInterceptor } from './core/interceptors/response-trans
 import { validateEnv } from './core/config/env.config.js';
 import { getLoggerConfig } from './core/logger/logger.config.js';
 
+import { DatabaseModule } from './core/database/database.module.js';
+import { CacheModule } from './core/cache/cache.module.js';
+
 @Module({
   imports: [
     // 1. Strict Global Environment Configuration (Fail-fast using Zod)
@@ -24,6 +27,9 @@ import { getLoggerConfig } from './core/logger/logger.config.js';
       inject: [ConfigService],
       useFactory: getLoggerConfig,
     }),
+    // 3. Global Database & Cache Modules
+    DatabaseModule,
+    CacheModule,
   ],
   controllers: [AppController],
   providers: [

@@ -5,7 +5,8 @@ export const envSchema = z.object({
     .enum(['development', 'production', 'test'])
     .default('development'),
   PORT: z.coerce.number().default(3000),
-  // Add new environment variables here
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is strictly required.'),
+  REDIS_URL: z.string().min(1, 'REDIS_URL is strictly required.'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
@@ -21,7 +22,7 @@ export function validateEnv(config: Record<string, unknown>) {
       )
       .join('\n');
     console.error(
-      `\n🚨 CRITICAL ERROR IN .ENV CONFIGURATION 🚨\n${errorMessages}\n`,
+      `\n CRITICAL ERROR IN .ENV CONFIGURATION \n${errorMessages}\n`,
     );
     throw new Error(
       'Invalid environment configuration. Aborting application startup...',
