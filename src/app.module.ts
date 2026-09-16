@@ -1,12 +1,13 @@
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { TracingMiddleware } from './common/middlewares/tracing.middleware.js';
 import { RequiredHeadersMiddleware } from './common/middlewares/required-headers.middleware.js';
 import { GlobalExceptionFilter } from './core/filters/global-exception.filter.js';
+import { ResponseTransformInterceptor } from './core/interceptors/response-transform.interceptor.js';
 import { validateEnv } from './core/config/env.config.js';
 import { getLoggerConfig } from './core/logger/logger.config.js';
 
@@ -27,6 +28,10 @@ import { getLoggerConfig } from './core/logger/logger.config.js';
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ResponseTransformInterceptor,
+    },
     {
       provide: APP_FILTER,
       useClass: GlobalExceptionFilter,
