@@ -1,6 +1,12 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class CreateRoleDto {
+  @ApiProperty({
+    example: 'SUPPORT_AGENT',
+    description: 'UPPER_SNAKE_CASE role identifier.',
+    maxLength: 50,
+  })
   @IsString()
   @MaxLength(50)
   @Matches(/^[A-Z0-9_]+$/, {
@@ -8,6 +14,7 @@ export class CreateRoleDto {
   })
   name!: string;
 
+  @ApiPropertyOptional({ example: 'Handles support tickets.', maxLength: 255 })
   @IsOptional()
   @IsString()
   @MaxLength(255)

@@ -22,7 +22,7 @@ export class PermissionsService {
     const permission = await this.prisma.permission.findUnique({ where: { id } });
     if (!permission) {
       throw new AppException(
-        ErrorCodes.VALIDATION_ERROR,
+        ErrorCodes.PERMISSION_NOT_FOUND,
         `Permission "${id}" was not found.`,
         HttpStatus.NOT_FOUND,
       );
@@ -36,7 +36,7 @@ export class PermissionsService {
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new AppException(
-          ErrorCodes.VALIDATION_ERROR,
+          ErrorCodes.PERMISSION_ALREADY_EXISTS,
           `Permission action "${dto.action}" already exists.`,
           HttpStatus.CONFLICT,
         );

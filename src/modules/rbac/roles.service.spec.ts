@@ -52,7 +52,7 @@ describe('RolesService', () => {
 
       const result = await service.create({ name: 'ADMIN' });
 
-      expect(result).toEqual({ id: '1', name: 'ADMIN' });
+      expect(result).toEqual({ id: '1', name: 'ADMIN', permissions: [] });
       expect(prisma.role.create).toHaveBeenCalledWith({ data: { name: 'ADMIN' } });
     });
 
