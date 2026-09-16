@@ -11,7 +11,7 @@ import { PrismaClient } from '@prisma/client';
 export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(PrismaService.name);
+  private readonly logger = new Logger('POSTGRES');
 
   constructor(configService: ConfigService) {
     const isDev = configService.get<string>('NODE_ENV') === 'development';
@@ -35,14 +35,13 @@ export class PrismaService
   }
 
   async onModuleInit() {
-    this.logger.log('Connecting to PostgreSQL database via Prisma...');
+    this.logger.log('Connecting to PostgreSQL via Prisma...');
     await this.$connect();
-    this.logger.log('PostgreSQL database connection established successfully.');
+    this.logger.log('Connection established successfully.');
   }
 
   async onModuleDestroy() {
-    this.logger.log('Disconnecting from PostgreSQL database...');
     await this.$disconnect();
-    this.logger.log('PostgreSQL database connection closed.');
+    this.logger.log('Connection closed gracefully.');
   }
 }
