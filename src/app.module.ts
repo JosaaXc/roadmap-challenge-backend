@@ -17,6 +17,10 @@ import { getLoggerConfig } from './core/logger/logger.config.js';
 import { DatabaseModule } from './core/database/database.module.js';
 import { CacheModule } from './core/cache/cache.module.js';
 import { HealthModule } from './core/health/health.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
+import { RbacModule } from './modules/rbac/rbac.module.js';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
+import { PermissionsGuard } from './common/guards/permissions.guard.js';
 import appConfig from './core/config/app.config.js';
 
 @Module({
@@ -58,6 +62,10 @@ import appConfig from './core/config/app.config.js';
     DatabaseModule,
     CacheModule,
     HealthModule,
+
+    // 5. Identity & Access Management (JWT RS256, JWKS, RBAC)
+    AuthModule,
+    RbacModule,
   ],
   controllers: [AppController],
   providers: [
@@ -65,6 +73,10 @@ import appConfig from './core/config/app.config.js';
     { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Zero Trust: every request must carry a valid access token unless @IsPublic().
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Dynamic RBAC: evaluated right after authentication, per-route via @RequirePermissions().
+    { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
 })
 export class AppModule {
@@ -77,6 +89,10 @@ export class AppModule {
     // Strict security headers validation only for API v1 routes
     consumer
       .apply(RequiredHeadersMiddleware)
+      .exclude(
+        { path: 'v1/.well-known/{*path}', method: RequestMethod.ALL },
+        { path: 'v1/health', method: RequestMethod.ALL },
+      )
       .forRoutes({ path: 'v1/{*path}', method: RequestMethod.ALL });
   }
 }

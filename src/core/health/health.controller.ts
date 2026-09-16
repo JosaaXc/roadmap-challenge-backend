@@ -10,9 +10,11 @@ import {
 } from '@nestjs/terminus';
 import { PrismaService } from '../database/prisma.service.js';
 import { RedisService } from '../cache/redis.service.js';
+import { IsPublic } from '../../common/decorators/is-public.decorator.js';
 
 @ApiTags('Health')
 @SkipThrottle()
+@IsPublic()
 @Controller('health')
 export class HealthController {
   constructor(
