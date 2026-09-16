@@ -40,6 +40,20 @@ export const envSchema = z.object({
   // THROTTLE_LIMIT: max requests per IP per window (default: 60)
   THROTTLE_TTL: z.coerce.number().default(60_000),
   THROTTLE_LIMIT: z.coerce.number().default(60),
+
+  // JWT (RS256 asymmetric signing)
+  // Base64-encoded PEM content (NOT a file path) - generate with `npm run generate:jwt-keys`.
+  // Works unchanged across OSes/containers since it's plain env content, no shared filesystem.
+  JWT_PRIVATE_KEY: z.string().min(1, 'JWT_PRIVATE_KEY is strictly required.'),
+  JWT_PUBLIC_KEY: z.string().min(1, 'JWT_PUBLIC_KEY is strictly required.'),
+  // Key id advertised in the JWT header and in JWKS - lets consumers pick the right key on rotation.
+  JWT_KID: z.string().default('codequest-default'),
+  JWT_ACCESS_TOKEN_TTL: z.string().default('15m'),
+  JWT_REFRESH_TOKEN_TTL: z.string().default('7d'),
+  // Seconds. Upper bound for how long a validated access-token session is cached in Redis.
+  JWT_SESSION_CACHE_TTL_SECONDS: z.coerce.number().default(900),
+  // Seconds. TTL for the role -> permissions cache (Cache-Aside against Postgres).
+  ROLE_PERMISSIONS_CACHE_TTL_SECONDS: z.coerce.number().default(3600),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
