@@ -1,14 +1,23 @@
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from 'nestjs-throttler-storage-redis';
+import { Redis } from 'ioredis';
+
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { TracingMiddleware } from './common/middlewares/tracing.middleware.js';
 import { RequiredHeadersMiddleware } from './common/middlewares/required-headers.middleware.js';
 import { GlobalExceptionFilter } from './core/filters/global-exception.filter.js';
-import { validateEnv } from './core/config/env.config.js';
+import { ResponseTransformInterceptor } from './core/interceptors/response-transform.interceptor.js';
+import { validateEnv } from './core/config/env.validation.js';
 import { getLoggerConfig } from './core/logger/logger.config.js';
+import { DatabaseModule } from './core/database/database.module.js';
+import { CacheModule } from './core/cache/cache.module.js';
+import { HealthModule } from './core/health/health.module.js';
+import appConfig from './core/config/app.config.js';
 
 @Module({
   imports: [
@@ -16,21 +25,46 @@ import { getLoggerConfig } from './core/logger/logger.config.js';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
+      load: [appConfig],
     }),
+
     // 2. Dynamic Profile-based Logger Factory
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: getLoggerConfig,
     }),
+
+    // 3. Global Rate Limiting backed by Redis
+    //    Key format in Redis: THROTTLER-{ttl}:{clientIp}:{endpointHash}
+    //    Tracking is per client IP address (configurable via THROTTLE_TTL & THROTTLE_LIMIT)
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: configService.get<number>('THROTTLE_TTL', 60_000),
+            limit: configService.get<number>('THROTTLE_LIMIT', 60),
+          },
+        ],
+        storage: new ThrottlerStorageRedisService(
+          new Redis(configService.get<string>('REDIS_URL', 'redis://localhost:6379')),
+        ),
+      }),
+    }),
+
+    // 4. Infrastructure Modules
+    DatabaseModule,
+    CacheModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
-    {
-      provide: APP_FILTER,
-      useClass: GlobalExceptionFilter,
-    },
+    { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },
+    { provide: APP_FILTER, useClass: GlobalExceptionFilter },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {
