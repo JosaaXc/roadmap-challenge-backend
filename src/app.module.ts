@@ -12,6 +12,7 @@ import { TracingMiddleware } from './common/middlewares/tracing.middleware.js';
 import { RequiredHeadersMiddleware } from './common/middlewares/required-headers.middleware.js';
 import { GlobalExceptionFilter } from './core/filters/global-exception.filter.js';
 import { ResponseTransformInterceptor } from './core/interceptors/response-transform.interceptor.js';
+import { IdempotencyInterceptor } from './common/interceptors/index.js';
 import { validateEnv } from './core/config/env.validation.js';
 import { getLoggerConfig } from './core/logger/logger.config.js';
 import { DatabaseModule } from './core/database/database.module.js';
@@ -71,6 +72,9 @@ import appConfig from './core/config/app.config.js';
   providers: [
     AppService,
     { provide: APP_INTERCEPTOR, useClass: ResponseTransformInterceptor },
+    // Inner to ResponseTransformInterceptor: a cached replay's raw body still
+    // flows up through the envelope wrapper, same as a normal fresh response.
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     // Zero Trust: every request must carry a valid access token unless @IsPublic().

@@ -5,7 +5,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
+import { transactionContext } from './transaction.context.js';
 
 @Injectable()
 export class PrismaService
@@ -43,5 +44,14 @@ export class PrismaService
   async onModuleDestroy() {
     await this.$disconnect();
     this.logger.log('Connection closed gracefully.');
+  }
+
+  /**
+   * Transaction-aware client: inside a @Transactional() method (or any nested
+   * call it makes), returns the active transaction client so writes join the
+   * same DB transaction.
+   */
+  get tx(): Prisma.TransactionClient {
+    return transactionContext.getStore() ?? this;
   }
 }
