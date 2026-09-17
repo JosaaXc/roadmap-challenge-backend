@@ -8,14 +8,17 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
-import { ApiEnvelopeError, ApiEnvelopeResponse } from '../../common/swagger/index.js';
+import { ApiEnvelopeError, ApiEnvelopePaginatedResponse, ApiEnvelopeResponse } from '../../common/swagger/index.js';
+import { CursorPaginationDto } from '../../common/pagination/index.js';
 import { RolesService } from './roles.service.js';
 import { CreateRoleDto } from './dto/create-role.dto.js';
 import { UpdateRoleDto } from './dto/update-role.dto.js';
 import { RoleResponseDto } from './dto/role-response.dto.js';
+import { RoleListItemResponseDto } from './dto/role-list-item-response.dto.js';
 
 @ApiTags('RBAC - Roles')
 @ApiBearerAuth()
@@ -25,10 +28,16 @@ export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all roles with their granted permissions.' })
-  @ApiEnvelopeResponse(200, 'Roles retrieved successfully.', RoleResponseDto, { isArray: true })
-  findAll() {
-    return this.rolesService.findAll();
+  @ApiOperation({
+    summary: 'List roles (cursor-paginated) with a lean permissions summary.',
+    description: 'Permissions here carry only { id, action } - use GET /roles/:id for full detail.',
+  })
+  @ApiQuery({ name: 'take', required: false, type: Number, description: 'Max items (1-50, default 10).' })
+  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Last id from the previous page.' })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'], description: 'Default desc.' })
+  @ApiEnvelopePaginatedResponse(200, 'Roles retrieved successfully.', RoleListItemResponseDto)
+  findAll(@Query() dto: CursorPaginationDto) {
+    return this.rolesService.findAll(dto);
   }
 
   @Get(':id')

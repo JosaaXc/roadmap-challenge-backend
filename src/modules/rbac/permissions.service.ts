@@ -1,8 +1,9 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, Permission } from '@prisma/client';
 import { PrismaService } from '../../core/database/prisma.service.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { ErrorCodes } from '../../common/exceptions/error-codes.enum.js';
+import { CursorPaginationDto, PaginatedResult, paginateWithCursor } from '../../common/pagination/index.js';
 import { RbacCacheService } from './rbac-cache.service.js';
 import type { CreatePermissionDto } from './dto/create-permission.dto.js';
 import type { UpdatePermissionDto } from './dto/update-permission.dto.js';
@@ -14,8 +15,12 @@ export class PermissionsService {
     private readonly rbacCache: RbacCacheService,
   ) { }
 
-  findAll() {
-    return this.prisma.permission.findMany({ orderBy: { action: 'asc' } });
+  findAll(dto: CursorPaginationDto): Promise<PaginatedResult<Permission>> {
+    return paginateWithCursor<Permission, Prisma.PermissionFindManyArgs>(
+      this.prisma.permission,
+      {},
+      dto,
+    );
   }
 
   async findOne(id: string) {

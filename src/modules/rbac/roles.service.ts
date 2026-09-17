@@ -3,10 +3,17 @@ import { Prisma, Role, Permission } from '@prisma/client';
 import { PrismaService } from '../../core/database/prisma.service.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { ErrorCodes } from '../../common/exceptions/error-codes.enum.js';
+import {
+  CursorFindManyDelegate,
+  CursorPaginationDto,
+  PaginatedResult,
+  paginateWithCursor,
+} from '../../common/pagination/index.js';
 import { RbacCacheService } from './rbac-cache.service.js';
 import type { CreateRoleDto } from './dto/create-role.dto.js';
 import type { UpdateRoleDto } from './dto/update-role.dto.js';
 import type { RoleResponseDto } from './dto/role-response.dto.js';
+import type { RoleListItemResponseDto } from './dto/role-list-item-response.dto.js';
 
 type RoleWithPermissions = Role & {
   permissions: { permission: Permission }[];
@@ -18,6 +25,20 @@ function toRoleResponse(role: RoleWithPermissions): RoleResponseDto {
   return { ...rest, permissions: permissions.map((rp) => rp.permission) };
 }
 
+/**
+ * Lean mapping for list views: permissions carry only { id, action } - full
+ * description/timestamps would otherwise be duplicated per-permission,
+ * per-role, on every single page of the list for no reason a list needs.
+ * Use findOne() for the full detail shape.
+ */
+function toRoleListItem(role: RoleWithPermissions): RoleListItemResponseDto {
+  const { permissions, ...rest } = role;
+  return {
+    ...rest,
+    permissions: permissions.map((rp) => ({ id: rp.permission.id, action: rp.permission.action })),
+  };
+}
+
 const ROLE_WITH_PERMISSIONS_INCLUDE = {
   permissions: { include: { permission: true } },
 } satisfies Prisma.RoleInclude;
@@ -27,14 +48,19 @@ export class RolesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rbacCache: RbacCacheService,
-  ) {}
+  ) { }
 
-  async findAll(): Promise<RoleResponseDto[]> {
-    const roles = await this.prisma.role.findMany({
-      orderBy: { name: 'asc' },
-      include: ROLE_WITH_PERMISSIONS_INCLUDE,
-    });
-    return roles.map(toRoleResponse);
+  async findAll(dto: CursorPaginationDto): Promise<PaginatedResult<RoleListItemResponseDto>> {
+    const delegate = this.prisma.role as unknown as CursorFindManyDelegate<
+      RoleWithPermissions,
+      Prisma.RoleFindManyArgs
+    >;
+    const page = await paginateWithCursor(
+      delegate,
+      { include: ROLE_WITH_PERMISSIONS_INCLUDE },
+      dto,
+    );
+    return { items: page.items.map(toRoleListItem), meta: page.meta };
   }
 
   async findOne(id: string): Promise<RoleResponseDto> {

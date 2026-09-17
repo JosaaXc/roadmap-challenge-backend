@@ -8,10 +8,16 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
-import { ApiEnvelopeError, ApiEnvelopeResponse } from '../../common/swagger/index.js';
+import {
+  ApiEnvelopeError,
+  ApiEnvelopePaginatedResponse,
+  ApiEnvelopeResponse,
+} from '../../common/swagger/index.js';
+import { CursorPaginationDto } from '../../common/pagination/index.js';
 import { PermissionsService } from './permissions.service.js';
 import { CreatePermissionDto } from './dto/create-permission.dto.js';
 import { UpdatePermissionDto } from './dto/update-permission.dto.js';
@@ -25,12 +31,13 @@ export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all permissions.' })
-  @ApiEnvelopeResponse(200, 'Permissions retrieved successfully.', PermissionResponseDto, {
-    isArray: true,
-  })
-  findAll() {
-    return this.permissionsService.findAll();
+  @ApiOperation({ summary: 'List permissions (cursor-paginated).' })
+  @ApiQuery({ name: 'take', required: false, type: Number, description: 'Max items (1-50, default 10).' })
+  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Last id from the previous page.' })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'], description: 'Default desc.' })
+  @ApiEnvelopePaginatedResponse(200, 'Permissions retrieved successfully.', PermissionResponseDto)
+  findAll(@Query() dto: CursorPaginationDto) {
+    return this.permissionsService.findAll(dto);
   }
 
   @Get(':id')
