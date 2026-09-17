@@ -67,6 +67,19 @@ export const envSchema = z.object({
   IDEMPOTENCY_DEFAULT_TTL_SECONDS: z.coerce.number().default(86_400),
   // Seconds. TTL of the IN_PROGRESS lock while the original request is still executing.
   IDEMPOTENCY_LOCK_TTL_SECONDS: z.coerce.number().default(60),
+
+  // Discord OAuth2 (Federated Identity via passport-discord)
+  DISCORD_CLIENT_ID: z.string().min(1, 'DISCORD_CLIENT_ID is strictly required.'),
+  DISCORD_CLIENT_SECRET: z.string().min(1, 'DISCORD_CLIENT_SECRET is strictly required.'),
+  DISCORD_CALLBACK_URL: z.string().min(1, 'DISCORD_CALLBACK_URL is strictly required.'),
+  // Where OAuth callbacks redirect the browser back to with the issued tokens.
+  FRONTEND_URL: z.string().min(1, 'FRONTEND_URL is strictly required.'),
+
+  // Sessions: caps how many refresh tokens (devices/browsers) a single user can
+  // hold concurrently. Logging in beyond the cap evicts the oldest session(s)
+  // first (sliding window) - prevents unbounded session growth from repeated
+  // login attempts/retries.
+  MAX_ACTIVE_SESSIONS_PER_USER: z.coerce.number().int().min(1).default(5),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

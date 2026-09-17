@@ -14,9 +14,9 @@ async function bootstrap() {
   app.useLogger(app.get(PinoLogger));
 
   const configService = app.get(ConfigService);
-  const appName  = configService.get<string>('app.name', 'CodeQuest API');
-  const port     = configService.get<number>('app.port', 3000);
-  const env      = configService.get<string>('app.env', 'development');
+  const appName = configService.get<string>('app.name', 'CodeQuest API');
+  const port = configService.get<number>('app.port', 3000);
+  const env = configService.get<string>('app.env', 'development');
 
   // 1. Security: Helmet HTTP Headers
   app.use(helmet());
@@ -46,6 +46,18 @@ async function bootstrap() {
     .setDescription(`${appName} - REST API Documentation`)
     .setVersion('1.0')
     .addBearerAuth()
+    // Applied to EVERY documented operation - avoids decorating each route
+    // by hand with @ApiHeader(). A handful of infra endpoints (JWKS, health,
+    // Discord OAuth redirects) are exempt at runtime via @SkipRequiredHeaders(),
+    // so the doc will slightly over-declare them as "required" there too -
+    // an acceptable trade-off for not having to repeat this everywhere.
+    .addGlobalParameters(
+      { name: 'x-device-id', in: 'header', required: true, schema: { type: 'string' } },
+      { name: 'x-app-version', in: 'header', required: true, schema: { type: 'string' } },
+      { name: 'x-device-os', in: 'header', required: true, schema: { type: 'string' } },
+      { name: 'x-latitude', in: 'header', required: true, schema: { type: 'string' } },
+      { name: 'x-longitude', in: 'header', required: true, schema: { type: 'string' } },
+    )
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);

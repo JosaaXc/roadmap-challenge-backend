@@ -7,6 +7,9 @@ import { JwksController } from './jwks.controller.js';
 import { JwtKeysModule } from './keys/jwt-keys.module.js';
 import { JwtKeysService } from './keys/jwt-keys.service.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
+import { DiscordStrategy } from './strategies/discord.strategy.js';
+import { AuthService } from './auth.service.js';
+import { AuthController } from './auth.controller.js';
 
 @Module({
   imports: [
@@ -35,8 +38,8 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
       }),
     }),
   ],
-  controllers: [JwksController],
-  providers: [JwtKeysService, JwtStrategy],
-  exports: [JwtModule, JwtKeysService],
+  controllers: [JwksController, AuthController],
+  providers: [JwtKeysService, JwtStrategy, DiscordStrategy, AuthService],
+  exports: [JwtModule, JwtKeysService, AuthService],
 })
 export class AuthModule { }

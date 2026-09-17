@@ -3,6 +3,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { createPublicKey } from 'node:crypto';
 import { IsPublic } from '../../common/decorators/is-public.decorator.js';
 import { SkipResponseEnvelope } from '../../common/decorators/skip-response-envelope.decorator.js';
+import { SkipRequiredHeaders } from '../../common/decorators/skip-required-headers.decorator.js';
 import { JwtKeysService } from './keys/jwt-keys.service.js';
 
 interface Jwk extends Record<string, unknown> {
@@ -18,6 +19,7 @@ export class JwksController {
 
   @IsPublic()
   @SkipResponseEnvelope()
+  @SkipRequiredHeaders()
   @Get('jwks.json')
   @ApiOperation({
     summary: 'Public JSON Web Key Set (JWKS) for verifying RS256 access tokens.',

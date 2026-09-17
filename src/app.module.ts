@@ -9,7 +9,6 @@ import { Redis } from 'ioredis';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { TracingMiddleware } from './common/middlewares/tracing.middleware.js';
-import { RequiredHeadersMiddleware } from './common/middlewares/required-headers.middleware.js';
 import { GlobalExceptionFilter } from './core/filters/global-exception.filter.js';
 import { ResponseTransformInterceptor } from './core/interceptors/response-transform.interceptor.js';
 import { IdempotencyInterceptor } from './common/interceptors/index.js';
@@ -20,8 +19,10 @@ import { CacheModule } from './core/cache/cache.module.js';
 import { HealthModule } from './core/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { RbacModule } from './modules/rbac/rbac.module.js';
+import { UsersModule } from './modules/users/users.module.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from './common/guards/permissions.guard.js';
+import { RequiredHeadersGuard } from './common/guards/required-headers.guard.js';
 import appConfig from './core/config/app.config.js';
 
 @Module({
@@ -67,6 +68,7 @@ import appConfig from './core/config/app.config.js';
     // 5. Identity & Access Management (JWT RS256, JWKS, RBAC)
     AuthModule,
     RbacModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [
@@ -77,6 +79,8 @@ import appConfig from './core/config/app.config.js';
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Perimeter: mobile-app context headers. Opt out per-route with @SkipRequiredHeaders().
+    { provide: APP_GUARD, useClass: RequiredHeadersGuard },
     // Zero Trust: every request must carry a valid access token unless @IsPublic().
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     // Dynamic RBAC: evaluated right after authentication, per-route via @RequirePermissions().
@@ -89,14 +93,5 @@ export class AppModule {
     consumer
       .apply(TracingMiddleware)
       .forRoutes({ path: '{*path}', method: RequestMethod.ALL });
-
-    // Strict security headers validation only for API v1 routes
-    consumer
-      .apply(RequiredHeadersMiddleware)
-      .exclude(
-        { path: 'v1/.well-known/{*path}', method: RequestMethod.ALL },
-        { path: 'v1/health', method: RequestMethod.ALL },
-      )
-      .forRoutes({ path: 'v1/{*path}', method: RequestMethod.ALL });
   }
 }
