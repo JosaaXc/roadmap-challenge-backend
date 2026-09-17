@@ -1,17 +1,22 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiCookieAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
-import type { Request, Response } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
+import ms from 'ms';
 import { IsPublic } from '../../common/decorators/is-public.decorator.js';
 import { Idempotent } from '../../common/decorators/idempotent.decorator.js';
 import { SkipRequiredHeaders } from '../../common/decorators/skip-required-headers.decorator.js';
 import { ApiEnvelopeError, ApiEnvelopeResponse } from '../../common/swagger/index.js';
+import { AppException } from '../../common/exceptions/app.exception.js';
+import { ErrorCodes } from '../../common/exceptions/error-codes.enum.js';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
-import { RefreshTokenDto } from './dto/refresh-token.dto.js';
+import { AuthResponseDto } from './dto/auth-response.dto.js';
 import { TokenPairResponseDto } from './dto/token-pair-response.dto.js';
 import { DiscordAuthGuard } from './guards/discord-auth.guard.js';
+
+const REFRESH_TOKEN_COOKIE = 'refreshToken';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -26,33 +31,57 @@ export class AuthController {
   @Idempotent()
   @ApiOperation({
     summary: 'Register a new local (email/password) account.',
-    description: 'Idempotent: retry safely with the same Idempotency-Key.',
+    description:
+      'Idempotent: retry safely with the same Idempotency-Key. The refresh token is issued as an httpOnly cookie, not in the response body.',
   })
-  @ApiEnvelopeResponse(201, 'Account created; tokens issued.', TokenPairResponseDto)
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Client-generated unique key for this operation.' })
+  @ApiEnvelopeResponse(201, 'Account created; access token issued.', AuthResponseDto)
+  @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
   @ApiEnvelopeError(409, 'A user with this email or username already exists.', 'USER_ALREADY_EXISTS')
+  @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
   @HttpCode(HttpStatus.CREATED)
-  register(@Body() dto: RegisterDto) {
-    return this.authService.registerLocal(dto);
+  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response): Promise<AuthResponseDto> {
+    const tokens = await this.authService.registerLocal(dto);
+    return this.issueSession(res, tokens);
   }
 
   @Post('login')
   @IsPublic()
-  @ApiOperation({ summary: 'Log in with email/password.' })
-  @ApiEnvelopeResponse(200, 'Tokens issued.', TokenPairResponseDto)
+  @ApiOperation({
+    summary: 'Log in with email/password.',
+    description: 'The refresh token is issued as an httpOnly cookie, not in the response body.',
+  })
+  @ApiEnvelopeResponse(200, 'Access token issued.', AuthResponseDto)
   @ApiEnvelopeError(401, 'Invalid email or password.', 'INVALID_CREDENTIALS')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto) {
-    return this.authService.loginLocal(dto);
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response): Promise<AuthResponseDto> {
+    const tokens = await this.authService.loginLocal(dto);
+    return this.issueSession(res, tokens);
   }
 
   @Post('refresh')
   @IsPublic()
-  @ApiOperation({ summary: 'Exchange a refresh token for a new access/refresh pair (rotation).' })
-  @ApiEnvelopeResponse(200, 'New tokens issued; the old refresh token is revoked.', TokenPairResponseDto)
-  @ApiEnvelopeError(401, 'Refresh token is invalid, expired or already used.', 'INVALID_REFRESH_TOKEN')
+  @ApiCookieAuth('refreshToken')
+  @ApiOperation({
+    summary: 'Exchange the refresh token cookie for a new access/refresh pair (rotation).',
+    description:
+      'No body. The refresh token travels ONLY as the httpOnly `refreshToken` cookie set by /login, /register or /discord/callback - send the request with credentials/cookies included. The rotated refresh token is written back the same way.',
+  })
+  @ApiEnvelopeResponse(200, 'New access token issued; the old refresh token is revoked.', AuthResponseDto)
+  @ApiEnvelopeError(401, 'Refresh token is missing, invalid, expired or already used.', 'INVALID_REFRESH_TOKEN')
   @HttpCode(HttpStatus.OK)
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refreshTokens(dto.refreshToken);
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<AuthResponseDto> {
+    const rawToken = req.cookies?.[REFRESH_TOKEN_COOKIE];
+    if (!rawToken) {
+      throw new AppException(
+        ErrorCodes.INVALID_REFRESH_TOKEN,
+        'Refresh token is invalid, expired or already used.',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    const tokens = await this.authService.refreshTokens(rawToken);
+    return this.issueSession(res, tokens);
   }
 
   @Get('discord')
@@ -70,12 +99,36 @@ export class AuthController {
   @UseGuards(DiscordAuthGuard)
   @ApiOperation({
     summary: 'Discord OAuth2 callback.',
-    description: 'Redirects to `${FRONTEND_URL}/auth/callback?token=...&refreshToken=...` with the issued tokens.',
+    description:
+      'Sets the refresh token as an httpOnly cookie, then redirects to `${FRONTEND_URL}/auth/callback?token=...` with the access token.',
   })
   discordCallback(@Req() req: Request, @Res() res: Response) {
     const { accessToken, refreshToken } = req.user as TokenPairResponseDto;
+    this.setRefreshTokenCookie(res, refreshToken);
+
     const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
-    const redirectUrl = `${frontendUrl}/auth/callback?token=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`;
+    const redirectUrl = `${frontendUrl}/auth/callback?token=${encodeURIComponent(accessToken)}`;
     res.redirect(redirectUrl);
+  }
+
+  private issueSession(res: Response, tokens: TokenPairResponseDto): AuthResponseDto {
+    this.setRefreshTokenCookie(res, tokens.refreshToken);
+    return { accessToken: tokens.accessToken, user: tokens.user };
+  }
+
+  private setRefreshTokenCookie(res: Response, refreshToken: string): void {
+    const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+    const refreshTtlMs = ms(this.configService.get<string>('JWT_REFRESH_TOKEN_TTL', '7d') as any);
+
+    const options: CookieOptions = {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
+      domain: this.configService.get<string>('COOKIE_DOMAIN'),
+      path: '/api/v1/auth',
+      maxAge: refreshTtlMs as unknown as number,
+    };
+
+    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, options);
   }
 }

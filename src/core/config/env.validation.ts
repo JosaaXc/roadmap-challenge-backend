@@ -80,6 +80,10 @@ export const envSchema = z.object({
   DISCORD_CALLBACK_URL: z.string().min(1, 'DISCORD_CALLBACK_URL is strictly required.'),
   // Where OAuth callbacks redirect the browser back to with the issued tokens.
   FRONTEND_URL: z.string().min(1, 'FRONTEND_URL is strictly required.'),
+  // Optional Domain= attribute for the httpOnly refresh-token cookie - only needed
+  // when the frontend and backend live on different subdomains of the same site
+  // (e.g. ".codequest.app" to share the cookie between app.codequest.app and api.codequest.app).
+  COOKIE_DOMAIN: z.string().optional(),
 
   // Sessions: caps how many refresh tokens (devices/browsers) a single user can
   // hold concurrently. Logging in beyond the cap evicts the oldest session(s)
