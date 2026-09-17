@@ -52,7 +52,6 @@
     "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "nestjs-pino": "^5.2.0",
-    "nestjs-throttler-storage-redis": "^0.5.1",
     "passport": "^0.7.0",
     "passport-discord": "^0.1.4",
     "passport-jwt": "^4.0.1",

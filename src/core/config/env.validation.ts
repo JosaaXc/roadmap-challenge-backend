@@ -36,10 +36,16 @@ export const envSchema = z.object({
   REDIS_URL: z.string().min(1, 'REDIS_URL is strictly required.'),
 
   // Rate Limiting (configurable per environment)
-  // THROTTLE_TTL  : time window in milliseconds (default: 60000 = 1 minute)
-  // THROTTLE_LIMIT: max requests per IP per window (default: 60)
+  // THROTTLE_TTL           : time window in milliseconds (default: 60000 = 1 minute)
+  // THROTTLE_LIMIT         : max requests per IP per window (default: 60)
+  // THROTTLE_BLOCK_DURATION: milliseconds an IP must wait after exceeding the
+  //   limit before it can make requests again (independent of THROTTLE_TTL -
+  //   e.g. a 1-minute window can still enforce a 10-minute lockout once
+  //   exceeded). Defaults to THROTTLE_TTL itself when unset, matching
+  //   @nestjs/throttler's own default.
   THROTTLE_TTL: z.coerce.number().default(60_000),
   THROTTLE_LIMIT: z.coerce.number().default(60),
+  THROTTLE_BLOCK_DURATION: z.coerce.number().optional(),
 
   // JWT (RS256 asymmetric signing)
   // Base64-encoded PEM content (NOT a file path) - generate with `npm run generate:jwt-keys`.

@@ -1,13 +1,19 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+
+  // Trust exactly one reverse-proxy hop (nginx / Cloud Run's front-end / any
+  // single load balancer) so Express parses X-Forwarded-For into req.ip/req.ips
+  // instead of reporting the proxy's own IP for every client.
+  app.set('trust proxy', 1);
 
   // Activate Pino as the primary structured logger FIRST so all subsequent
   // logs (including the connection logs from Redis/Postgres modules) are formatted.
