@@ -3,6 +3,7 @@ import { ValidationPipe, VersioningType, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
@@ -27,8 +28,13 @@ async function bootstrap() {
   // 1. Security: Helmet HTTP Headers
   app.use(helmet());
 
+  app.use(cookieParser());
+
   // 2. Security: CORS
-  app.enableCors({ origin: '*' });
+  app.enableCors({
+    origin: configService.getOrThrow<string>('FRONTEND_URL'),
+    credentials: true,
+  });
 
   // 3. Global URI Versioning (/api/v1)
   app.setGlobalPrefix('api');
@@ -52,6 +58,7 @@ async function bootstrap() {
     .setDescription(`${appName} - REST API Documentation`)
     .setVersion('1.0')
     .addBearerAuth()
+    .addCookieAuth('refreshToken', { type: 'apiKey', in: 'cookie', name: 'refreshToken' }, 'refreshToken')
     // Applied to EVERY documented operation - avoids decorating each route
     // by hand with @ApiHeader(). A handful of infra endpoints (JWKS, health,
     // Discord OAuth redirects) are exempt at runtime via @SkipRequiredHeaders(),
