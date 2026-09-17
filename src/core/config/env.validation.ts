@@ -50,10 +50,23 @@ export const envSchema = z.object({
   JWT_KID: z.string().default('codequest-default'),
   JWT_ACCESS_TOKEN_TTL: z.string().default('15m'),
   JWT_REFRESH_TOKEN_TTL: z.string().default('7d'),
-  // Seconds. Upper bound for how long a validated access-token session is cached in Redis.
+  // Seconds. INDEPENDENT of JWT_ACCESS_TOKEN_TTL - controls how often JwtAuthGuard
+  // re-validates isActive/roleId against Postgres, not how long the token itself lives.
+  // The guard always caps this to whatever time is actually left on the token
+  // (min(this value, remaining token life)), so it can never outlive the JWT - but
+  // setting it LOWER than the token TTL is intentional: it forces more frequent
+  // re-checks (e.g. faster reaction to a user being deactivated mid-session) at the
+  // cost of more Postgres reads. Setting it equal to or above the token TTL means
+  // "trust the cached session for the token's entire lifetime, never re-check".
   JWT_SESSION_CACHE_TTL_SECONDS: z.coerce.number().default(900),
   // Seconds. TTL for the role -> permissions cache (Cache-Aside against Postgres).
   ROLE_PERMISSIONS_CACHE_TTL_SECONDS: z.coerce.number().default(3600),
+
+  // Idempotency (Stripe-style Idempotency-Key deduplication, see @Idempotent())
+  // Seconds. Default TTL for a COMPLETED result, used when a route doesn't override it explicitly.
+  IDEMPOTENCY_DEFAULT_TTL_SECONDS: z.coerce.number().default(86_400),
+  // Seconds. TTL of the IN_PROGRESS lock while the original request is still executing.
+  IDEMPOTENCY_LOCK_TTL_SECONDS: z.coerce.number().default(60),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

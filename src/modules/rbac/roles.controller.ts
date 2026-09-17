@@ -10,7 +10,8 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Idempotent } from '../../common/decorators/idempotent.decorator.js';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
 import { ApiEnvelopeError, ApiEnvelopePaginatedResponse, ApiEnvelopeResponse } from '../../common/swagger/index.js';
 import { CursorPaginationDto } from '../../common/pagination/index.js';
@@ -50,9 +51,16 @@ export class RolesController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new role.' })
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Create a new role.',
+    description: 'Idempotent: retry safely with the same Idempotency-Key to avoid creating duplicates.',
+  })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Client-generated unique key for this operation.' })
   @ApiEnvelopeResponse(201, 'Role created.', RoleResponseDto)
+  @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
   @ApiEnvelopeError(409, 'A role with this name already exists.', 'ROLE_ALREADY_EXISTS')
+  @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
   create(@Body() dto: CreateRoleDto) {
     return this.rolesService.create(dto);
   }

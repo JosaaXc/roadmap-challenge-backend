@@ -10,7 +10,8 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Idempotent } from '../../common/decorators/idempotent.decorator.js';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
 import {
   ApiEnvelopeError,
@@ -50,9 +51,16 @@ export class PermissionsController {
   }
 
   @Post()
-  @ApiOperation({ summary: "Create a new permission (action, e.g. 'paths:create')." })
+  @Idempotent()
+  @ApiOperation({
+    summary: "Create a new permission (action, e.g. 'paths:create').",
+    description: 'Idempotent: retry safely with the same Idempotency-Key to avoid creating duplicates.',
+  })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Client-generated unique key for this operation.' })
   @ApiEnvelopeResponse(201, 'Permission created.', PermissionResponseDto)
+  @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
   @ApiEnvelopeError(409, 'A permission with this action already exists.', 'PERMISSION_ALREADY_EXISTS')
+  @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
   create(@Body() dto: CreatePermissionDto) {
     return this.permissionsService.create(dto);
   }
