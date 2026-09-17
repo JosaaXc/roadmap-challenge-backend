@@ -11,10 +11,12 @@ import {
 import { PrismaService } from '../database/prisma.service.js';
 import { RedisService } from '../cache/redis.service.js';
 import { IsPublic } from '../../common/decorators/is-public.decorator.js';
+import { SkipRequiredHeaders } from '../../common/decorators/skip-required-headers.decorator.js';
 
 @ApiTags('Health')
 @SkipThrottle()
 @IsPublic()
+@SkipRequiredHeaders()
 @Controller('health')
 export class HealthController {
   constructor(

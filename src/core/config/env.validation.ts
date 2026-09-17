@@ -36,10 +36,16 @@ export const envSchema = z.object({
   REDIS_URL: z.string().min(1, 'REDIS_URL is strictly required.'),
 
   // Rate Limiting (configurable per environment)
-  // THROTTLE_TTL  : time window in milliseconds (default: 60000 = 1 minute)
-  // THROTTLE_LIMIT: max requests per IP per window (default: 60)
+  // THROTTLE_TTL           : time window in milliseconds (default: 60000 = 1 minute)
+  // THROTTLE_LIMIT         : max requests per IP per window (default: 60)
+  // THROTTLE_BLOCK_DURATION: milliseconds an IP must wait after exceeding the
+  //   limit before it can make requests again (independent of THROTTLE_TTL -
+  //   e.g. a 1-minute window can still enforce a 10-minute lockout once
+  //   exceeded). Defaults to THROTTLE_TTL itself when unset, matching
+  //   @nestjs/throttler's own default.
   THROTTLE_TTL: z.coerce.number().default(60_000),
   THROTTLE_LIMIT: z.coerce.number().default(60),
+  THROTTLE_BLOCK_DURATION: z.coerce.number().optional(),
 
   // JWT (RS256 asymmetric signing)
   // Base64-encoded PEM content (NOT a file path) - generate with `npm run generate:jwt-keys`.
@@ -67,6 +73,19 @@ export const envSchema = z.object({
   IDEMPOTENCY_DEFAULT_TTL_SECONDS: z.coerce.number().default(86_400),
   // Seconds. TTL of the IN_PROGRESS lock while the original request is still executing.
   IDEMPOTENCY_LOCK_TTL_SECONDS: z.coerce.number().default(60),
+
+  // Discord OAuth2 (Federated Identity via passport-discord)
+  DISCORD_CLIENT_ID: z.string().min(1, 'DISCORD_CLIENT_ID is strictly required.'),
+  DISCORD_CLIENT_SECRET: z.string().min(1, 'DISCORD_CLIENT_SECRET is strictly required.'),
+  DISCORD_CALLBACK_URL: z.string().min(1, 'DISCORD_CALLBACK_URL is strictly required.'),
+  // Where OAuth callbacks redirect the browser back to with the issued tokens.
+  FRONTEND_URL: z.string().min(1, 'FRONTEND_URL is strictly required.'),
+
+  // Sessions: caps how many refresh tokens (devices/browsers) a single user can
+  // hold concurrently. Logging in beyond the cap evicts the oldest session(s)
+  // first (sliding window) - prevents unbounded session growth from repeated
+  // login attempts/retries.
+  MAX_ACTIVE_SESSIONS_PER_USER: z.coerce.number().int().min(1).default(5),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
