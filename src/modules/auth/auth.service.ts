@@ -241,6 +241,31 @@ export class AuthService {
     return { ...tokens, user: toUserResponse(record.user, record.user.role.name) };
   }
 
+  @Transactional()
+  async logout(userId: string, rawToken?: string): Promise<void> {
+    if (!rawToken) {
+      return;
+    }
+
+    const [recordId] = rawToken.split('.');
+    if (!recordId) {
+      return;
+    }
+
+    await this.prisma.tx.refreshToken.updateMany({
+      where: { id: recordId, userId },
+      data: { isRevoked: true },
+    });
+  }
+
+  @Transactional()
+  async logoutAll(userId: string): Promise<void> {
+    await this.prisma.tx.refreshToken.updateMany({
+      where: { userId, isRevoked: false },
+      data: { isRevoked: true },
+    });
+  }
+
   private async enforceMaxSessions(userId: string): Promise<void> {
     const maxSessions = this.configService.get<number>('MAX_ACTIVE_SESSIONS_PER_USER', 5);
 

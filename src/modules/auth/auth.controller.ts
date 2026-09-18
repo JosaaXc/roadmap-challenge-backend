@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
-import { ApiCookieAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCookieAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import type { CookieOptions, Request, Response } from 'express';
 import ms from 'ms';
@@ -7,12 +7,14 @@ import { IsPublic } from '../../common/decorators/is-public.decorator.js';
 import { Idempotent } from '../../common/decorators/idempotent.decorator.js';
 import { SkipRequiredHeaders } from '../../common/decorators/skip-required-headers.decorator.js';
 import { ApiEnvelopeError, ApiEnvelopeResponse } from '../../common/swagger/index.js';
+import { getAuthContext } from '../../common/middlewares/tracing.context.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { ErrorCodes } from '../../common/exceptions/error-codes.enum.js';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { AuthResponseDto } from './dto/auth-response.dto.js';
+import { LogoutResponseDto } from './dto/logout-response.dto.js';
 import { TokenPairResponseDto } from './dto/token-pair-response.dto.js';
 import { DiscordAuthGuard } from './guards/discord-auth.guard.js';
 
@@ -24,7 +26,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @Post('register')
   @IsPublic()
@@ -84,6 +86,50 @@ export class AuthController {
     return this.issueSession(res, tokens);
   }
 
+  @Post('logout')
+  @ApiBearerAuth()
+  @ApiCookieAuth('refreshToken')
+  @ApiOperation({
+    summary: 'Log out the current session.',
+    description:
+      'Revokes the refresh token in the httpOnly `refreshToken` cookie and clears it. Idempotent: succeeds with 200 even when the cookie is missing or already revoked. The access JWT remains valid until its exp (max 15m) - standard stateless behavior.',
+  })
+  @ApiEnvelopeResponse(200, 'Current session closed.', LogoutResponseDto)
+  @ApiEnvelopeError(401, 'Access token is missing, malformed, expired or invalid.', 'INVALID_TOKEN')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<LogoutResponseDto> {
+    const auth = getAuthContext();
+    if (!auth) {
+      throw new AppException(ErrorCodes.UNAUTHORIZED, 'Authentication context is missing.', HttpStatus.UNAUTHORIZED);
+    }
+
+    await this.authService.logout(auth.userId, req.cookies?.[REFRESH_TOKEN_COOKIE]);
+    this.clearRefreshTokenCookie(res);
+    return { message: 'Logged out successfully.' };
+  }
+
+  @Post('logout/all')
+  @ApiBearerAuth()
+  @ApiCookieAuth('refreshToken')
+  @ApiOperation({
+    summary: 'Log out all sessions (every device/browser).',
+    description:
+      'Revokes every active refresh token of the authenticated user and clears the current cookie. Use after password change or suspected compromise. Idempotent: succeeds with 200 even when no sessions remain. Access JWTs remain valid until their exp (max 15m).',
+  })
+  @ApiEnvelopeResponse(200, 'All sessions closed.', LogoutResponseDto)
+  @ApiEnvelopeError(401, 'Access token is missing, malformed, expired or invalid.', 'INVALID_TOKEN')
+  @HttpCode(HttpStatus.OK)
+  async logoutAll(@Res({ passthrough: true }) res: Response): Promise<LogoutResponseDto> {
+    const auth = getAuthContext();
+    if (!auth) {
+      throw new AppException(ErrorCodes.UNAUTHORIZED, 'Authentication context is missing.', HttpStatus.UNAUTHORIZED);
+    }
+
+    await this.authService.logoutAll(auth.userId);
+    this.clearRefreshTokenCookie(res);
+    return { message: 'Logged out from all sessions successfully.' };
+  }
+
   @Get('discord')
   @IsPublic()
   @SkipRequiredHeaders()
@@ -117,18 +163,28 @@ export class AuthController {
   }
 
   private setRefreshTokenCookie(res: Response, refreshToken: string): void {
-    const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
     const refreshTtlMs = ms(this.configService.get<string>('JWT_REFRESH_TOKEN_TTL', '7d') as any);
 
-    const options: CookieOptions = {
+    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
+      ...this.getRefreshTokenCookieBaseOptions(),
+      maxAge: refreshTtlMs as unknown as number,
+    });
+  }
+
+  private clearRefreshTokenCookie(res: Response): void {
+    // Must mirror path/domain/sameSite/secure of setRefreshTokenCookie or the browser keeps the cookie.
+    res.clearCookie(REFRESH_TOKEN_COOKIE, this.getRefreshTokenCookieBaseOptions());
+  }
+
+  private getRefreshTokenCookieBaseOptions(): CookieOptions {
+    const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
+
+    return {
       httpOnly: true,
       secure: isProduction,
       sameSite: isProduction ? 'none' : 'lax',
       domain: this.configService.get<string>('COOKIE_DOMAIN'),
       path: '/api/v1/auth',
-      maxAge: refreshTtlMs as unknown as number,
     };
-
-    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, options);
   }
 }
