@@ -24,11 +24,15 @@ model User {
 
   accounts      UserAccount[]
   refreshTokens RefreshToken[]
+  learningPaths LearningPath[]
+  submissions   QuestionnaireSubmission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   @@index([roleId])
+  @@index([deletedAt])
   @@map("users")
 }
 
@@ -96,4 +100,180 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  title       String
+  slug        String   @unique
+  description String
+  level       String // "BEGINNER", "INTERMEDIATE", "ADVANCED"
+  tags        String[] // Motor de inferencia: ["frontend", "react"]
+  url         String
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  deletedAt   DateTime?
+
+  nodes PathNode[] // Trazabilidad: en cuántas rutas está este curso
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([tags])
+  @@index([deletedAt])
+  @@map("courses")
+}
+
+model Question {
+  id         String           @id @default(uuid())
+  text       String
+  isRequired Boolean          @default(true)
+  isActive   Boolean          @default(true)
+  order      Int
+  options    QuestionOption[]
+  answers    Answer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, order])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+
+  tagsOutput String[]
+
+  answers Answer[]
+
+  createdAt DateTime @default(now())
+
+  @@index([questionId])
+  @@map("question_options")
+}
+
+// ==============================================================================
+// GRAFOS DE APRENDIZAJE (RUTAS DINÁMICAS)
+// ==============================================================================
+model LearningPath {
+  id          String  @id @default(uuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  progress    Float   @default(0.0)
+  isFavorite  Boolean @default(false)
+  isPublic    Boolean @default(false)
+
+  nodes PathNode[]
+  edges PathEdge[]
+
+  submission QuestionnaireSubmission?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId])
+  @@index([deletedAt])
+  @@index([isPublic])
+  @@map("learning_paths")
+}
+
+enum NodeType {
+  DEVTALLES_COURSE
+  EXTERNAL_LINK
+}
+
+model PathNode {
+  id          String   @id @default(uuid())
+  pathId      String
+  path        LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  type        NodeType @default(DEVTALLES_COURSE)
+  title       String
+  isCompleted Boolean  @default(false)
+  position    Int      @default(0)
+
+  courseId    String?
+  course      Course?  @relation(fields: [courseId], references: [id])
+  externalUrl String?
+
+  outgoingEdges PathEdge[] @relation("SourceNode")
+  incomingEdges PathEdge[] @relation("TargetNode")
+
+  deletedAt DateTime?
+
+  @@index([pathId])
+  @@index([pathId, position])
+  @@index([deletedAt])
+  @@map("path_nodes")
+}
+
+model PathEdge {
+  id           String       @id @default(uuid())
+  pathId       String
+  path         LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  sourceNodeId String
+  targetNodeId String
+  isOptional   Boolean      @default(false)
+
+  sourceNode PathNode @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode PathNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  deletedAt DateTime?
+
+  @@unique([sourceNodeId, targetNodeId])
+  @@index([pathId])
+  @@index([deletedAt])
+  @@map("path_edges")
+}
+
+// ==============================================================================
+// 📝 DOMINIO 6: HISTORIAL DE RESPUESTAS (ANALÍTICA Y TELEMETRÍA)
+// ==============================================================================
+model QuestionnaireSubmission {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  answers Answer[]
+
+  // Ruta generada a partir de este cuestionario (1:1 opcional).
+  generatedPathId String?       @unique
+  generatedPath   LearningPath? @relation(fields: [generatedPathId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId])
+  @@index([deletedAt])
+  @@map("questionnaire_submissions")
+}
+
+model Answer {
+  id           String                  @id @default(uuid())
+  submissionId String
+  submission   QuestionnaireSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  optionId   String
+  option     QuestionOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
+
+  // Inmutable: copia de los tagsOutput al momento de responder.
+  tagsSnapshot String[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([submissionId, questionId])
+  @@index([submissionId])
+  @@index([questionId])
+  @@index([optionId])
+  @@map("answers")
 }

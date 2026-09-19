@@ -72,8 +72,8 @@ Apply database migrations to your PostgreSQL instance:
 npx prisma migrate dev
 ```
 
-### 7. Seed Base RBAC Data (Roles, Permissions, Admin User)
-Populates the base roles (`ADMIN`, `USER`, `SYSTEM`), the base permission set, their role↔permission grants, and a base admin user (idempotent - safe to re-run):
+### 7. Seed Business Domain (RBAC + Catalog + Questionnaire + Demo Graph)
+Populates the base roles (`ADMIN`, `USER`, `SYSTEM`), the base permission set, their role↔permission grants (`USER` gets `catalog:read` + `paths:read/create/update/delete`), a base admin user, a 24-course DevTalles catalog, a 5-question profiling questionnaire (one `isActive:false` for filter testing), and a demo `LearningPath` DAG (6 nodes / 6 edges with an optional branch) assigned to the admin (idempotent - safe to re-run):
 ```bash
 npm run db:seed
 ```
@@ -102,6 +102,8 @@ npm run start:prod
 
 # Open Prisma Studio (Database GUI Viewer)
 npx prisma studio
+# Physical removal bypassing soft-delete (singular `delete` is logical)
+# Usage from code: prisma.$hardDelete('course', { slug })
 
 # Run unit tests
 npm run test
@@ -112,7 +114,7 @@ npm run test:e2e
 # Generate a fresh RS256 JWT key pair (prints base64 lines to paste into .env)
 npm run generate:jwt-keys
 
-# Seed base roles/permissions/admin user (idempotent)
+# Seed RBAC + catalog + questionnaire + demo learning path (idempotent)
 npm run db:seed
 ```
 
