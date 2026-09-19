@@ -19,6 +19,8 @@ import { HealthModule } from './core/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { RbacModule } from './modules/rbac/rbac.module.js';
 import { UsersModule } from './modules/users/users.module.js';
+import { CatalogModule } from './modules/catalog/catalog.module.js';
+import { QuestionsModule } from './modules/questions/questions.module.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from './common/guards/permissions.guard.js';
 import { RequiredHeadersGuard } from './common/guards/required-headers.guard.js';
@@ -75,6 +77,8 @@ import appConfig from './core/config/app.config.js';
     AuthModule,
     RbacModule,
     UsersModule,
+    CatalogModule,
+    QuestionsModule,
   ],
   controllers: [AppController],
   providers: [
