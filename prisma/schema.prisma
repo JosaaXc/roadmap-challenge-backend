@@ -24,6 +24,7 @@ model User {
 
   accounts      UserAccount[]
   refreshTokens RefreshToken[]
+  learningPaths LearningPath[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -96,4 +97,115 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  title       String
+  slug        String   @unique
+  description String
+  level       String // "BEGINNER", "INTERMEDIATE", "ADVANCED"
+  tags        String[] // Motor de inferencia: ["frontend", "react"]
+  url         String
+  imageUrl    String?
+
+  nodes PathNode[] // Trazabilidad: en cuántas rutas está este curso
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([tags])
+  @@map("courses")
+}
+
+model Question {
+  id         String           @id @default(uuid())
+  text       String
+  isRequired Boolean          @default(true)
+  isActive   Boolean          @default(true)
+  order      Int
+  options    QuestionOption[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, order])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+
+  tagsOutput String[]
+
+  createdAt DateTime @default(now())
+
+  @@index([questionId])
+  @@map("question_options")
+}
+
+// ==============================================================================
+// GRAFOS DE APRENDIZAJE (RUTAS DINÁMICAS)
+// ==============================================================================
+model LearningPath {
+  id          String  @id @default(uuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  progress    Float   @default(0.0)
+  isFavorite  Boolean @default(false)
+
+  nodes PathNode[]
+  edges PathEdge[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("learning_paths")
+}
+
+enum NodeType {
+  DEVTALLES_COURSE
+  EXTERNAL_LINK
+}
+
+model PathNode {
+  id          String   @id @default(uuid())
+  pathId      String
+  path        LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  type        NodeType @default(DEVTALLES_COURSE)
+  title       String
+  isCompleted Boolean  @default(false)
+
+  courseId    String?
+  course      Course?  @relation(fields: [courseId], references: [id])
+  externalUrl String?
+
+  outgoingEdges PathEdge[] @relation("SourceNode")
+  incomingEdges PathEdge[] @relation("TargetNode")
+
+  @@index([pathId])
+  @@map("path_nodes")
+}
+
+model PathEdge {
+  id           String       @id @default(uuid())
+  pathId       String
+  path         LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  sourceNodeId String
+  targetNodeId String
+  isOptional   Boolean      @default(false)
+
+  sourceNode PathNode @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode PathNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceNodeId, targetNodeId])
+  @@index([pathId])
+  @@map("path_edges")
 }
