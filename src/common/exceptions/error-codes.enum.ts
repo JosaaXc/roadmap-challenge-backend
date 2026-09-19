@@ -30,4 +30,7 @@ export enum ErrorCodes {
 
   // Business domain: catalog
   COURSE_NOT_FOUND = 'COURSE_NOT_FOUND',
+
+  // Persistence (Prisma P2025 mapped by GlobalExceptionFilter)
+  RECORD_NOT_FOUND = 'RECORD_NOT_FOUND',
 }

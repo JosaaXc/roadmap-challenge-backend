@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { transactionContext } from './transaction.context.js';
+import { buildSoftDeleteExtension } from './soft-delete.extension.js';
 
 @Injectable()
 export class PrismaService
@@ -36,6 +37,30 @@ export class PrismaService
   }
 
   async onModuleInit() {
+    const extended = this.$extends(buildSoftDeleteExtension(this));
+    for (const key of Reflect.ownKeys(extended)) {
+      if (typeof key !== 'string' || key.startsWith('$')) continue;
+      try {
+        (this as unknown as Record<string, unknown>)[key] =
+          (extended as unknown as Record<string, unknown>)[key];
+      } catch {
+        // Getter-only/exotic props are skipped — never model delegates.
+      }
+    }
+    const extendedClient = extended as unknown as Record<string, unknown>;
+    (this as unknown as Record<string, unknown>).$hardDelete =
+      (extendedClient.$hardDelete as (...a: never[]) => unknown).bind(extended);
+    const rawTransaction = extended.$transaction.bind(extended) as (...args: never[]) => unknown;
+    (this as unknown as { $transaction: unknown }).$transaction = (...args: never[]) => {
+      const [first, ...rest] = args;
+      if (typeof first === 'function') {
+        const cb = first as (txClient: Prisma.TransactionClient) => unknown;
+        return rawTransaction(((txClient: Prisma.TransactionClient) =>
+          transactionContext.run(txClient, () => cb(txClient))) as never, ...(rest as never[]));
+      }
+      return rawTransaction(...(args as never[]));
+    };
+
     this.logger.log('Connecting to PostgreSQL via Prisma...');
     await this.$connect();
     this.logger.log('Connection established successfully.');

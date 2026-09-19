@@ -102,6 +102,8 @@ npm run start:prod
 
 # Open Prisma Studio (Database GUI Viewer)
 npx prisma studio
+# Physical removal bypassing soft-delete (singular `delete` is logical)
+# Usage from code: prisma.$hardDelete('course', { slug })
 
 # Run unit tests
 npm run test

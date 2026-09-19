@@ -11,7 +11,7 @@ export class CatalogService {
   constructor(private readonly prisma: PrismaService) { }
 
   findAllCourses(dto: CatalogQueryDto): Promise<PaginatedResult<Course>> {
-    const where: Prisma.CourseWhereInput = {};
+    const where: Prisma.CourseWhereInput = { isActive: true };
 
     if (dto.level?.length) {
       where.level = { in: dto.level };
@@ -32,7 +32,7 @@ export class CatalogService {
   }
 
   async findCourseBySlug(slug: string): Promise<Course> {
-    const course = await this.prisma.course.findUnique({ where: { slug } });
+    const course = await this.prisma.course.findFirst({ where: { slug, isActive: true } });
     if (!course) {
       throw new AppException(ErrorCodes.COURSE_NOT_FOUND, `Course "${slug}" was not found.`, HttpStatus.NOT_FOUND);
     }

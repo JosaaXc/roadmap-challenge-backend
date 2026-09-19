@@ -28,8 +28,10 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   @@index([roleId])
+  @@index([deletedAt])
   @@map("users")
 }
 
@@ -108,6 +110,8 @@ model Course {
   tags        String[] // Motor de inferencia: ["frontend", "react"]
   url         String
   imageUrl    String?
+  isActive    Boolean  @default(true)
+  deletedAt   DateTime?
 
   nodes PathNode[] // Trazabilidad: en cuántas rutas está este curso
 
@@ -116,6 +120,7 @@ model Course {
 
   @@index([slug])
   @@index([tags])
+  @@index([deletedAt])
   @@map("courses")
 }
 
@@ -165,8 +170,10 @@ model LearningPath {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   @@index([userId])
+  @@index([deletedAt])
   @@map("learning_paths")
 }
 
@@ -190,7 +197,10 @@ model PathNode {
   outgoingEdges PathEdge[] @relation("SourceNode")
   incomingEdges PathEdge[] @relation("TargetNode")
 
+  deletedAt DateTime?
+
   @@index([pathId])
+  @@index([deletedAt])
   @@map("path_nodes")
 }
 
@@ -205,7 +215,10 @@ model PathEdge {
   sourceNode PathNode @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
   targetNode PathNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
 
+  deletedAt DateTime?
+
   @@unique([sourceNodeId, targetNodeId])
   @@index([pathId])
+  @@index([deletedAt])
   @@map("path_edges")
 }
