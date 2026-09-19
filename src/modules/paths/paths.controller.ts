@@ -38,6 +38,7 @@ export class PathsController {
   })
   @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Client-generated unique key for this operation.' })
   @ApiEnvelopeResponse(201, 'Learning path generated.', PathResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
   @ApiEnvelopeError(400, 'Invalid question/option combination.', 'INVALID_QUESTION_OPTION')
   @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
@@ -52,6 +53,7 @@ export class PathsController {
   @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Last id from the previous page.' })
   @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'], description: 'Cursor order (default desc).' })
   @ApiEnvelopePaginatedResponse(200, 'Learning paths retrieved successfully.', PathResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   findMine(@Query() dto: PathQueryDto) {
     return this.pathsService.findMyPaths(this.currentUserId(), dto);
   }
@@ -60,6 +62,7 @@ export class PathsController {
   @ApiOperation({ summary: "Get a single learning path with its graph (nodes + edges)." })
   @ApiParam({ name: 'id', description: 'Learning path UUID.' })
   @ApiEnvelopeResponse(200, 'Learning path found.', PathResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   findOne(@Param('id') id: string) {
     return this.pathsService.findPathById(this.currentUserId(), id);
@@ -70,6 +73,7 @@ export class PathsController {
   @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
   @ApiParam({ name: 'nodeId', description: 'Path node UUID.' })
   @ApiEnvelopeResponse(200, 'Node completion toggled.', NodeProgressResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   @ApiEnvelopeError(404, 'Node not found in this path.', 'RECORD_NOT_FOUND')
   toggleNodeCompletion(@Param('pathId') pathId: string, @Param('nodeId') nodeId: string) {
@@ -80,6 +84,7 @@ export class PathsController {
   @ApiOperation({ summary: 'Toggle the favorite flag of a learning path.' })
   @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
   @ApiEnvelopeResponse(200, 'Favorite flag toggled.', FavoriteResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   toggleFavorite(@Param('pathId') pathId: string) {
     return this.pathsService.toggleFavorite(this.currentUserId(), pathId);
@@ -94,6 +99,7 @@ export class PathsController {
   @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Client-generated unique key for this operation.' })
   @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
   @ApiEnvelopeResponse(201, 'Custom node created.', NodeProgressResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   @ApiEnvelopeError(404, 'Previous node not found in this path.', 'RECORD_NOT_FOUND')
@@ -106,6 +112,7 @@ export class PathsController {
   @ApiOperation({ summary: 'Toggle public visibility of a learning path (community sharing).' })
   @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
   @ApiEnvelopeResponse(200, 'Visibility toggled.', VisibilityResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   toggleVisibility(@Param('pathId') pathId: string) {
     return this.pathsService.toggleVisibility(this.currentUserId(), pathId);
@@ -120,6 +127,7 @@ export class PathsController {
   @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Client-generated unique key for this operation.' })
   @ApiParam({ name: 'pathId', description: 'Source learning path UUID.' })
   @ApiEnvelopeResponse(201, 'Learning path forked.', PathResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
   @ApiEnvelopeError(404, 'Source path not found or not public.', 'PATH_NOT_FOUND')
   @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
@@ -132,6 +140,7 @@ export class PathsController {
   @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
   @ApiParam({ name: 'nodeId', description: 'Custom node UUID.' })
   @ApiEnvelopeResponse(200, 'Custom node deleted.', NodeProgressResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   @ApiEnvelopeError(404, 'Custom node not found in this path.', 'RECORD_NOT_FOUND')
   deleteCustomNode(@Param('pathId') pathId: string, @Param('nodeId') nodeId: string) {
@@ -143,6 +152,7 @@ export class PathsController {
   @ApiOperation({ summary: 'Delete a learning path (logical delete, recoverable).' })
   @ApiParam({ name: 'id', description: 'Learning path UUID.' })
   @ApiResponse({ status: 204, description: 'Learning path deleted (no response body).' })
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   remove(@Param('id') id: string): Promise<void> {
     return this.pathsService.deletePath(this.currentUserId(), id);
