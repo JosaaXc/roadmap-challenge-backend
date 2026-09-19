@@ -14,6 +14,9 @@ export class PathNodeResponseDto {
   @ApiProperty({ example: false })
   isCompleted!: boolean;
 
+  @ApiProperty({ example: 0, description: 'Deterministic order within the path.' })
+  position!: number;
+
   @ApiPropertyOptional({ format: 'uuid', nullable: true })
   courseId!: string | null;
 
@@ -51,11 +54,22 @@ export class PathResponseDto {
   @ApiProperty({ example: false })
   isFavorite!: boolean;
 
+  @ApiProperty({ example: false })
+  isPublic!: boolean;
+
   @ApiProperty({ type: [PathNodeResponseDto] })
   nodes!: PathNodeResponseDto[];
 
   @ApiProperty({ type: [PathEdgeResponseDto] })
   edges!: PathEdgeResponseDto[];
+
+  @ApiPropertyOptional({
+    type: 'string',
+    nullable: true,
+    description: 'Title of the first incomplete node (creation order), null when 100% complete.',
+    example: 'NestJS: De cero a experto',
+  })
+  nextStep!: string | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt!: Date;
@@ -78,4 +92,12 @@ export class FavoriteResponseDto {
 
   @ApiProperty({ example: true })
   isFavorite!: boolean;
+}
+
+export class VisibilityResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ example: true })
+  isPublic!: boolean;
 }

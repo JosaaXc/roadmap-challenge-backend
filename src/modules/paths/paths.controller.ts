@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Idempotent } from '../../common/decorators/idempotent.decorator.js';
 import { getAuthContext } from '../../common/middlewares/tracing.context.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
@@ -12,7 +12,7 @@ import {
 import { PathsService } from './paths.service.js';
 import { GeneratePathDto } from './dto/generate-path.dto.js';
 import { PathQueryDto } from './dto/path-query.dto.js';
-import { PathResponseDto, NodeProgressResponseDto, FavoriteResponseDto } from './dto/path-response.dto.js';
+import { PathResponseDto, NodeProgressResponseDto, FavoriteResponseDto, VisibilityResponseDto } from './dto/path-response.dto.js';
 import { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 
 @ApiTags('Paths')
@@ -100,5 +100,51 @@ export class PathsController {
   @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
   addCustomNode(@Param('pathId') pathId: string, @Body() dto: CreateCustomNodeDto) {
     return this.pathsService.addCustomNode(this.currentUserId(), pathId, dto);
+  }
+
+  @Patch(':pathId/visibility')
+  @ApiOperation({ summary: 'Toggle public visibility of a learning path (community sharing).' })
+  @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
+  @ApiEnvelopeResponse(200, 'Visibility toggled.', VisibilityResponseDto)
+  @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
+  toggleVisibility(@Param('pathId') pathId: string) {
+    return this.pathsService.toggleVisibility(this.currentUserId(), pathId);
+  }
+
+  @Post(':pathId/fork')
+  @Idempotent()
+  @ApiOperation({
+    summary: "Fork a public path into your own profile (fresh copy at 0%).",
+    description: 'Idempotent: retry safely with the same Idempotency-Key; the replay returns the original fork.',
+  })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Client-generated unique key for this operation.' })
+  @ApiParam({ name: 'pathId', description: 'Source learning path UUID.' })
+  @ApiEnvelopeResponse(201, 'Learning path forked.', PathResponseDto)
+  @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
+  @ApiEnvelopeError(404, 'Source path not found or not public.', 'PATH_NOT_FOUND')
+  @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
+  fork(@Param('pathId') pathId: string) {
+    return this.pathsService.forkPath(this.currentUserId(), pathId);
+  }
+
+  @Delete(':pathId/nodes/:nodeId')
+  @ApiOperation({ summary: 'Delete a custom external-link node (DevTalles course nodes are protected).' })
+  @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
+  @ApiParam({ name: 'nodeId', description: 'Custom node UUID.' })
+  @ApiEnvelopeResponse(200, 'Custom node deleted.', NodeProgressResponseDto)
+  @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
+  @ApiEnvelopeError(404, 'Custom node not found in this path.', 'RECORD_NOT_FOUND')
+  deleteCustomNode(@Param('pathId') pathId: string, @Param('nodeId') nodeId: string) {
+    return this.pathsService.deleteCustomNode(this.currentUserId(), pathId, nodeId);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a learning path (logical delete, recoverable).' })
+  @ApiParam({ name: 'id', description: 'Learning path UUID.' })
+  @ApiResponse({ status: 204, description: 'Learning path deleted (no response body).' })
+  @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
+  remove(@Param('id') id: string): Promise<void> {
+    return this.pathsService.deletePath(this.currentUserId(), id);
   }
 }

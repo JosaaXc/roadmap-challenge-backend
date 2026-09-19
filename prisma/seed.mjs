@@ -162,6 +162,9 @@ async function main() {
   }
 
   console.log('[SEED] 🧠 Generando cuestionario de perfilamiento...');
+  // Orden FK: answers (Restrict) antes que questions
+  await prisma.answer.deleteMany({});
+  await prisma.questionnaireSubmission.deleteMany({});
   await prisma.question.deleteMany({});
 
   const QUESTIONNAIRE = [
@@ -258,22 +261,22 @@ async function main() {
     await prisma.pathNode.deleteMany({ where: { pathId: demoPath.id } });
 
     const n1 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'JavaScript', type: 'DEVTALLES_COURSE', courseId: courseMap['javascript-moderno'].id },
+      data: { pathId: demoPath.id, title: 'JavaScript', type: 'DEVTALLES_COURSE', courseId: courseMap['javascript-moderno'].id, position: 0 },
     });
     const n2 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'TypeScript', type: 'DEVTALLES_COURSE', courseId: courseMap['typescript-guia'].id },
+      data: { pathId: demoPath.id, title: 'TypeScript', type: 'DEVTALLES_COURSE', courseId: courseMap['typescript-guia'].id, position: 1 },
     });
     const n3 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'Node.js', type: 'DEVTALLES_COURSE', courseId: courseMap['nodejs-cero-experto'].id },
+      data: { pathId: demoPath.id, title: 'Node.js', type: 'DEVTALLES_COURSE', courseId: courseMap['nodejs-cero-experto'].id, position: 2 },
     });
     const n4 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'React', type: 'DEVTALLES_COURSE', courseId: courseMap['react-cero-experto'].id },
+      data: { pathId: demoPath.id, title: 'React', type: 'DEVTALLES_COURSE', courseId: courseMap['react-cero-experto'].id, position: 3 },
     });
     const n5 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'SOLID', type: 'DEVTALLES_COURSE', courseId: courseMap['principios-solid'].id },
+      data: { pathId: demoPath.id, title: 'SOLID', type: 'DEVTALLES_COURSE', courseId: courseMap['principios-solid'].id, position: 4 },
     });
     const n6 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'Proyecto Final MDN', type: 'EXTERNAL_LINK', externalUrl: 'https://developer.mozilla.org/es/' },
+      data: { pathId: demoPath.id, title: 'Proyecto Final MDN', type: 'EXTERNAL_LINK', externalUrl: 'https://developer.mozilla.org/es/', position: 5 },
     });
 
     await prisma.pathEdge.createMany({

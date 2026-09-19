@@ -19,6 +19,19 @@ export type PathWithGraph = Prisma.LearningPathGetPayload<{
   include: { nodes: true; edges: true };
 }>;
 
+export type PathWithNextStep = PathWithGraph & { nextStep: string | null };
+
+// Deterministic node order (explicit sequence) — the base for `nextStep`.
+const NODES_ORDERED: Prisma.LearningPathInclude = {
+  nodes: { orderBy: { position: 'asc' } },
+  edges: true,
+};
+
+function withNextStep<T extends PathWithGraph>(path: T): T & { nextStep: string | null } {
+  const next = path.nodes.find((node) => !node.isCompleted) ?? null;
+  return { ...path, nextStep: next?.title ?? null };
+}
+
 const BLUEPRINT_TTL_SECONDS = 86_400; // 24h
 const MAX_PATH_COURSES = 6;
 
@@ -94,7 +107,7 @@ export class PathsService {
     });
 
     const nodes = [];
-    for (const course of courses) {
+    for (const [index, course] of courses.entries()) {
       nodes.push(
         await tx.pathNode.create({
           data: {
@@ -103,6 +116,7 @@ export class PathsService {
             title: course.title,
             courseId: course.id,
             isCompleted: false,
+            position: index,
           },
         }),
       );
@@ -125,28 +139,42 @@ export class PathsService {
       data: { generatedPathId: path.id },
     });
 
-    return tx.learningPath.findUniqueOrThrow({
-      where: { id: path.id },
-      include: { nodes: true, edges: true },
-    });
+    return withNextStep(
+      await tx.learningPath.findUniqueOrThrow({
+        where: { id: path.id },
+        include: { ...NODES_ORDERED },
+      }),
+    );
   }
 
-  findMyPaths(userId: string, dto: PathQueryDto): Promise<PaginatedResult<PathWithGraph>> {
+  async findMyPaths(userId: string, dto: PathQueryDto): Promise<PaginatedResult<PathWithNextStep>> {
     const delegate: CursorFindManyDelegate<PathWithGraph, Prisma.LearningPathFindManyArgs> = {
       findMany: (args) => this.prisma.learningPath.findMany(args) as Promise<PathWithGraph[]>,
     };
-    return paginateWithCursor(delegate, { where: { userId }, include: { nodes: true, edges: true } }, dto);
+    const page = await paginateWithCursor(
+      delegate,
+      {
+        where: {
+          userId,
+          ...(dto.isFavorite !== undefined && { isFavorite: dto.isFavorite }),
+          ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
+        },
+        include: { ...NODES_ORDERED },
+      },
+      dto,
+    );
+    return { ...page, items: page.items.map(withNextStep) };
   }
 
-  async findPathById(userId: string, pathId: string) {
+  async findPathById(callerUserId: string, pathId: string) {
     const path = await this.prisma.learningPath.findFirst({
-      where: { id: pathId, userId },
-      include: { nodes: true, edges: true },
+      where: { id: pathId },
+      include: { ...NODES_ORDERED },
     });
-    if (!path) {
+    if (!path || (path.userId !== callerUserId && !path.isPublic)) {
       throw new AppException(ErrorCodes.PATH_NOT_FOUND, `Learning path "${pathId}" was not found.`, HttpStatus.NOT_FOUND);
     }
-    return path;
+    return withNextStep(path);
   }
 
   private async validateAnswers(
@@ -280,6 +308,8 @@ export class PathsService {
         title: dto.title,
         externalUrl: dto.url,
         isCompleted: false,
+        // Append at the end of the deterministic sequence.
+        position: await tx.pathNode.count({ where: { pathId } }),
       },
     });
 
@@ -296,6 +326,109 @@ export class PathsService {
 
     const progress = await this.recalculateProgress(tx, pathId);
     return { node, progress };
+  }
+
+  @Transactional()
+  async toggleVisibility(userId: string, pathId: string) {
+    const tx = this.prisma.tx;
+    const path = await this.assertOwnership(tx, userId, pathId);
+
+    const updated = await tx.learningPath.update({
+      where: { id: path.id },
+      data: { isPublic: !path.isPublic },
+    });
+    return { id: updated.id, isPublic: updated.isPublic };
+  }
+
+  @Transactional()
+  async deletePath(userId: string, pathId: string): Promise<void> {
+    const tx = this.prisma.tx;
+    await this.assertOwnership(tx, userId, pathId);
+    // Soft-delete via the Prisma extension (row retained, reads exclude it).
+    await tx.learningPath.delete({ where: { id: pathId } });
+  }
+
+  @Transactional()
+  async deleteCustomNode(userId: string, pathId: string, nodeId: string) {
+    const tx = this.prisma.tx;
+    await this.assertOwnership(tx, userId, pathId);
+
+    // Single check covering: missing, foreign-path, and DevTalles base nodes.
+    const node = await tx.pathNode.findFirst({
+      where: { id: nodeId, pathId, type: NodeType.EXTERNAL_LINK },
+    });
+    if (!node) {
+      throw new AppException(
+        ErrorCodes.RECORD_NOT_FOUND,
+        `Custom node "${nodeId}" was not found in path "${pathId}".`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    await tx.pathEdge.deleteMany({
+      where: { pathId, OR: [{ sourceNodeId: nodeId }, { targetNodeId: nodeId }] },
+    });
+    await tx.pathNode.delete({ where: { id: nodeId } });
+
+    const progress = await this.recalculateProgress(tx, pathId);
+    return { node, progress };
+  }
+
+  @Transactional()
+  async forkPath(callerUserId: string, pathId: string) {
+    const tx = this.prisma.tx;
+    const source = await tx.learningPath.findFirst({
+      where: { id: pathId },
+      include: { ...NODES_ORDERED },
+    });
+    // Same 404 whether missing, private-and-foreign, or soft-deleted: never
+    // leak the existence of another user's private path.
+    if (!source || (source.userId !== callerUserId && !source.isPublic)) {
+      throw new AppException(ErrorCodes.PATH_NOT_FOUND, `Learning path "${pathId}" was not found.`, HttpStatus.NOT_FOUND);
+    }
+
+    const clone = await tx.learningPath.create({
+      data: {
+        userId: callerUserId,
+        title: `${source.title} (Fork)`,
+        description: source.description,
+        progress: 0,
+        isFavorite: false,
+        isPublic: false,
+      },
+    });
+
+    const idMap = new Map<string, string>();
+    for (const node of source.nodes) {
+      const copy = await tx.pathNode.create({
+        data: {
+          pathId: clone.id,
+          type: node.type,
+          title: node.title,
+          isCompleted: false,
+          position: node.position,
+          courseId: node.courseId,
+          externalUrl: node.externalUrl,
+        },
+      });
+      idMap.set(node.id, copy.id);
+    }
+
+    for (const edge of source.edges) {
+      const sourceNodeId = idMap.get(edge.sourceNodeId);
+      const targetNodeId = idMap.get(edge.targetNodeId);
+      if (!sourceNodeId || !targetNodeId) continue;
+      await tx.pathEdge.create({
+        data: { pathId: clone.id, sourceNodeId, targetNodeId, isOptional: edge.isOptional },
+      });
+    }
+
+    return withNextStep(
+      await tx.learningPath.findUniqueOrThrow({
+        where: { id: clone.id },
+        include: { ...NODES_ORDERED },
+      }),
+    );
   }
 
   private async assertOwnership(tx: Prisma.TransactionClient, userId: string, pathId: string) {

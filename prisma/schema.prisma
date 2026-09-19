@@ -168,6 +168,7 @@ model LearningPath {
   description String?
   progress    Float   @default(0.0)
   isFavorite  Boolean @default(false)
+  isPublic    Boolean @default(false)
 
   nodes PathNode[]
   edges PathEdge[]
@@ -180,6 +181,7 @@ model LearningPath {
 
   @@index([userId])
   @@index([deletedAt])
+  @@index([isPublic])
   @@map("learning_paths")
 }
 
@@ -195,6 +197,7 @@ model PathNode {
   type        NodeType @default(DEVTALLES_COURSE)
   title       String
   isCompleted Boolean  @default(false)
+  position    Int      @default(0)
 
   courseId    String?
   course      Course?  @relation(fields: [courseId], references: [id])
@@ -206,6 +209,7 @@ model PathNode {
   deletedAt DateTime?
 
   @@index([pathId])
+  @@index([pathId, position])
   @@index([deletedAt])
   @@map("path_nodes")
 }
