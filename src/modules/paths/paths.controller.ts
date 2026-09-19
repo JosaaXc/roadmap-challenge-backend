@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Idempotent } from '../../common/decorators/idempotent.decorator.js';
 import { getAuthContext } from '../../common/middlewares/tracing.context.js';
@@ -12,7 +12,8 @@ import {
 import { PathsService } from './paths.service.js';
 import { GeneratePathDto } from './dto/generate-path.dto.js';
 import { PathQueryDto } from './dto/path-query.dto.js';
-import { PathResponseDto } from './dto/path-response.dto.js';
+import { PathResponseDto, NodeProgressResponseDto, FavoriteResponseDto } from './dto/path-response.dto.js';
+import { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 
 @ApiTags('Paths')
 @ApiBearerAuth()
@@ -62,5 +63,42 @@ export class PathsController {
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   findOne(@Param('id') id: string) {
     return this.pathsService.findPathById(this.currentUserId(), id);
+  }
+
+  @Patch(':pathId/nodes/:nodeId/complete')
+  @ApiOperation({ summary: 'Toggle a node completion flag and recalculate path progress.' })
+  @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
+  @ApiParam({ name: 'nodeId', description: 'Path node UUID.' })
+  @ApiEnvelopeResponse(200, 'Node completion toggled.', NodeProgressResponseDto)
+  @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
+  @ApiEnvelopeError(404, 'Node not found in this path.', 'RECORD_NOT_FOUND')
+  toggleNodeCompletion(@Param('pathId') pathId: string, @Param('nodeId') nodeId: string) {
+    return this.pathsService.toggleNodeCompletion(this.currentUserId(), pathId, nodeId);
+  }
+
+  @Patch(':pathId/favorite')
+  @ApiOperation({ summary: 'Toggle the favorite flag of a learning path.' })
+  @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
+  @ApiEnvelopeResponse(200, 'Favorite flag toggled.', FavoriteResponseDto)
+  @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
+  toggleFavorite(@Param('pathId') pathId: string) {
+    return this.pathsService.toggleFavorite(this.currentUserId(), pathId);
+  }
+
+  @Post(':pathId/nodes')
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Append a custom external-link node to your own path.',
+    description: 'Idempotent: retry safely with the same Idempotency-Key.',
+  })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Client-generated unique key for this operation.' })
+  @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
+  @ApiEnvelopeResponse(201, 'Custom node created.', NodeProgressResponseDto)
+  @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
+  @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
+  @ApiEnvelopeError(404, 'Previous node not found in this path.', 'RECORD_NOT_FOUND')
+  @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
+  addCustomNode(@Param('pathId') pathId: string, @Body() dto: CreateCustomNodeDto) {
+    return this.pathsService.addCustomNode(this.currentUserId(), pathId, dto);
   }
 }

@@ -63,3 +63,19 @@ export class PathResponseDto {
   @ApiProperty({ format: 'date-time' })
   updatedAt!: Date;
 }
+
+export class NodeProgressResponseDto {
+  @ApiProperty({ type: PathNodeResponseDto })
+  node!: PathNodeResponseDto;
+
+  @ApiProperty({ example: 33.3, description: 'Path progress percentage (1 decimal).' })
+  progress!: number;
+}
+
+export class FavoriteResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ example: true })
+  isFavorite!: boolean;
+}

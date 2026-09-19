@@ -13,6 +13,7 @@ import {
 } from '../../common/pagination/index.js';
 import type { GeneratePathDto } from './dto/generate-path.dto.js';
 import type { PathQueryDto } from './dto/path-query.dto.js';
+import type { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 
 export type PathWithGraph = Prisma.LearningPathGetPayload<{
   include: { nodes: true; edges: true };
@@ -218,5 +219,104 @@ export class PathsService {
     // findMany returns no guaranteed order — restore blueprint ranking.
     // Blueprint ids may reference soft-deleted/inactive courses; drop those.
     return courses.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+  }
+
+  @Transactional()
+  async toggleNodeCompletion(userId: string, pathId: string, nodeId: string) {
+    const tx = this.prisma.tx;
+    await this.assertOwnership(tx, userId, pathId);
+
+    const node = await tx.pathNode.findFirst({ where: { id: nodeId, pathId } });
+    if (!node) {
+      throw new AppException(
+        ErrorCodes.RECORD_NOT_FOUND,
+        `Node "${nodeId}" was not found in path "${pathId}".`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const updated = await tx.pathNode.update({
+      where: { id: node.id },
+      data: { isCompleted: !node.isCompleted },
+    });
+    const progress = await this.recalculateProgress(tx, pathId);
+    return { node: updated, progress };
+  }
+
+  @Transactional()
+  async toggleFavorite(userId: string, pathId: string) {
+    const tx = this.prisma.tx;
+    const path = await this.assertOwnership(tx, userId, pathId);
+
+    const updated = await tx.learningPath.update({
+      where: { id: path.id },
+      data: { isFavorite: !path.isFavorite },
+    });
+    return { id: updated.id, isFavorite: updated.isFavorite };
+  }
+
+  @Transactional()
+  async addCustomNode(userId: string, pathId: string, dto: CreateCustomNodeDto) {
+    const tx = this.prisma.tx;
+    await this.assertOwnership(tx, userId, pathId);
+
+    if (dto.previousNodeId) {
+      const previous = await tx.pathNode.findFirst({
+        where: { id: dto.previousNodeId, pathId },
+      });
+      if (!previous) {
+        throw new AppException(
+          ErrorCodes.RECORD_NOT_FOUND,
+          `Previous node "${dto.previousNodeId}" was not found in path "${pathId}".`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+    }
+
+    const node = await tx.pathNode.create({
+      data: {
+        pathId,
+        type: NodeType.EXTERNAL_LINK,
+        title: dto.title,
+        externalUrl: dto.url,
+        isCompleted: false,
+      },
+    });
+
+    if (dto.previousNodeId) {
+      await tx.pathEdge.create({
+        data: {
+          pathId,
+          sourceNodeId: dto.previousNodeId,
+          targetNodeId: node.id,
+          isOptional: true,
+        },
+      });
+    }
+
+    const progress = await this.recalculateProgress(tx, pathId);
+    return { node, progress };
+  }
+
+  private async assertOwnership(tx: Prisma.TransactionClient, userId: string, pathId: string) {
+    const path = await tx.learningPath.findFirst({ where: { id: pathId, userId } });
+    if (!path) {
+      throw new AppException(
+        ErrorCodes.PATH_NOT_FOUND,
+        `Learning path "${pathId}" was not found.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return path;
+  }
+
+  private async recalculateProgress(tx: Prisma.TransactionClient, pathId: string): Promise<number> {
+    const [total, completed] = await Promise.all([
+      tx.pathNode.count({ where: { pathId } }),
+      tx.pathNode.count({ where: { pathId, isCompleted: true } }),
+    ]);
+    const progress = total > 0 ? Math.round((completed / total) * 1000) / 10 : 0;
+    await tx.learningPath.update({ where: { id: pathId }, data: { progress } });
+    return progress;
   }
 }
