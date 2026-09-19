@@ -25,6 +25,7 @@ model User {
   accounts      UserAccount[]
   refreshTokens RefreshToken[]
   learningPaths LearningPath[]
+  submissions   QuestionnaireSubmission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -131,6 +132,7 @@ model Question {
   isActive   Boolean          @default(true)
   order      Int
   options    QuestionOption[]
+  answers    Answer[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -146,6 +148,8 @@ model QuestionOption {
   text       String
 
   tagsOutput String[]
+
+  answers Answer[]
 
   createdAt DateTime @default(now())
 
@@ -167,6 +171,8 @@ model LearningPath {
 
   nodes PathNode[]
   edges PathEdge[]
+
+  submission QuestionnaireSubmission?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -221,4 +227,49 @@ model PathEdge {
   @@index([pathId])
   @@index([deletedAt])
   @@map("path_edges")
+}
+
+// ==============================================================================
+// 📝 DOMINIO 6: HISTORIAL DE RESPUESTAS (ANALÍTICA Y TELEMETRÍA)
+// ==============================================================================
+model QuestionnaireSubmission {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  answers Answer[]
+
+  // Ruta generada a partir de este cuestionario (1:1 opcional).
+  generatedPathId String?       @unique
+  generatedPath   LearningPath? @relation(fields: [generatedPathId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId])
+  @@index([deletedAt])
+  @@map("questionnaire_submissions")
+}
+
+model Answer {
+  id           String                  @id @default(uuid())
+  submissionId String
+  submission   QuestionnaireSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  optionId   String
+  option     QuestionOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
+
+  // Inmutable: copia de los tagsOutput al momento de responder.
+  tagsSnapshot String[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([submissionId, questionId])
+  @@index([submissionId])
+  @@index([questionId])
+  @@index([optionId])
+  @@map("answers")
 }
