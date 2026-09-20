@@ -27,4 +27,14 @@ export enum ErrorCodes {
   // Identity (register/login/refresh)
   USER_ALREADY_EXISTS = 'USER_ALREADY_EXISTS',
   INVALID_REFRESH_TOKEN = 'INVALID_REFRESH_TOKEN',
+
+  // Business domain: catalog
+  COURSE_NOT_FOUND = 'COURSE_NOT_FOUND',
+
+  // Business domain: paths & questionnaire
+  INVALID_QUESTION_OPTION = 'INVALID_QUESTION_OPTION',
+  PATH_NOT_FOUND = 'PATH_NOT_FOUND',
+
+  // Persistence (Prisma P2025 mapped by GlobalExceptionFilter)
+  RECORD_NOT_FOUND = 'RECORD_NOT_FOUND',
 }
