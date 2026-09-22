@@ -17,6 +17,7 @@ import { AuthResponseDto } from './dto/auth-response.dto.js';
 import { LogoutResponseDto } from './dto/logout-response.dto.js';
 import { TokenPairResponseDto } from './dto/token-pair-response.dto.js';
 import { DiscordAuthGuard } from './guards/discord-auth.guard.js';
+import { DiscordCallbackGuard } from './guards/discord-callback.guard.js';
 
 const REFRESH_TOKEN_COOKIE = 'refreshToken';
 
@@ -142,13 +143,16 @@ export class AuthController {
   @Get('discord/callback')
   @IsPublic()
   @SkipRequiredHeaders()
-  @UseGuards(DiscordAuthGuard)
+  @UseGuards(DiscordCallbackGuard)
   @ApiOperation({
     summary: 'Discord OAuth2 callback.',
     description:
-      'Sets the refresh token as an httpOnly cookie, then redirects to `${FRONTEND_URL}/auth/callback?token=...` with the access token.',
+      'On success sets the refresh token as an httpOnly cookie, then redirects to `${FRONTEND_URL}/auth/callback?token=...` with the access token. ' +
+      'On denial/failure (e.g. user pressed Cancel on Discord) redirects to `${FRONTEND_URL}/auth/callback?error=access_denied&error_description=...` so the SPA can render the denial UX.',
   })
   discordCallback(@Req() req: Request, @Res() res: Response) {
+    // Guard already redirected on failure — nothing left to do.
+    if (!req.user) return;
     const { accessToken, refreshToken } = req.user as TokenPairResponseDto;
     this.setRefreshTokenCookie(res, refreshToken);
 

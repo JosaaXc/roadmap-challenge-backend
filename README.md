@@ -170,6 +170,7 @@ src/
 - **`POST /auth/register`** / **`POST /auth/login`**: email/password auth, passwords hashed with Argon2. Both issue a `{ accessToken, refreshToken }` pair.
 - **`POST /auth/refresh`**: refresh token rotation - each refresh token is single-use; refreshing revokes the old one and issues a new pair. Reusing an already-rotated token is rejected (`INVALID_REFRESH_TOKEN`).
 - **`GET /auth/discord`** / **`GET /auth/discord/callback`**: Discord OAuth2 (Federated Identity via `UserAccount`). New Discord logins auto-link to an existing account with the same email, or create a new one. The callback redirects to `${FRONTEND_URL}/auth/callback?token=...&refreshToken=...`.
+- **Discord denial**: if the user presses Cancel (or the flow fails), the callback redirects to `${FRONTEND_URL}/auth/callback?error=access_denied&error_description=...` instead of showing a backend error page - the SPA owns the denial UX, parse `error` from the query string.
 - **`GET /users/me`**: the authenticated user's own profile (role + linked provider accounts).
 - **Refresh tokens are opaque, not JWTs** - stored as `argon2` hashes in `RefreshToken`, referenced by the client as `{recordId}.{secret}` (a selector/verifier pair) for O(1) lookup without ever storing the secret in plaintext.
 - **Concurrent session cap**: `MAX_ACTIVE_SESSIONS_PER_USER` (default 5) bounds how many active refresh tokens (devices/browsers) a user can hold at once - logging in beyond the cap evicts the oldest session(s) first.

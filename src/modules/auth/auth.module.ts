@@ -10,6 +10,7 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { DiscordStrategy } from './strategies/discord.strategy.js';
 import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
+import { DiscordCallbackGuard } from './guards/discord-callback.guard.js';
 
 @Module({
   imports: [
@@ -39,7 +40,7 @@ import { AuthController } from './auth.controller.js';
     }),
   ],
   controllers: [JwksController, AuthController],
-  providers: [JwtKeysService, JwtStrategy, DiscordStrategy, AuthService],
+  providers: [JwtKeysService, JwtStrategy, DiscordStrategy, AuthService, DiscordCallbackGuard],
   exports: [JwtModule, JwtKeysService, AuthService],
 })
 export class AuthModule { }
