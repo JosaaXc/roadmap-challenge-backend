@@ -7,6 +7,7 @@
 //   npx prisma migrate reset   (runs this automatically via prisma.seed)
 
 import { PrismaClient } from '@prisma/client';
+import argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
@@ -29,11 +30,17 @@ const PERMISSIONS = [
   'paths:read',
   'paths:update',
   'paths:delete',
+  'paths:manage',
   // Domain: catalog
   'catalog:create',
   'catalog:read',
   'catalog:update',
   'catalog:delete',
+  // Domain: questions
+  'questions:create',
+  'questions:read',
+  'questions:update',
+  'questions:delete',
 ];
 
 const ROLE_PERMISSIONS = {
@@ -86,27 +93,34 @@ async function main() {
   const adminUsername = process.env.SEED_ADMIN_USERNAME ?? 'admin';
 
   console.log(`[SEED] Upserting base admin user (${adminEmail})...`);
-  // passwordHash is intentionally null: password/OAuth login is not
-  // implemented yet (see AuthController TODO). Set it via the password
-  // reset flow once login lands.
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD?.trim() || null;
+  const adminPasswordHash = adminPassword ? await argon2.hash(adminPassword) : null;
   await prisma.user.upsert({
     where: { email: adminEmail },
-    update: { roleId: roles.ADMIN.id },
+    update: {
+      roleId: roles.ADMIN.id,
+      ...(adminPasswordHash ? { passwordHash: adminPasswordHash } : {}),
+    },
     create: {
       email: adminEmail,
       username: adminUsername,
       displayName: 'Administrator',
-      passwordHash: null,
+      passwordHash: adminPasswordHash,
       isActive: true,
       roleId: roles.ADMIN.id,
     },
   });
+  console.log(
+    adminPasswordHash
+      ? '[SEED] Admin password set from SEED_ADMIN_PASSWORD.'
+      : '[SEED] SEED_ADMIN_PASSWORD not set - admin password login disabled.',
+  );
   const admin = await prisma.user.findUnique({ where: { email: adminEmail } });
 
   console.log('[SEED] 🚀 Sembrando catálogo DevTalles...');
-  const getImageUrl = (title) => {
-    const safeTitle = encodeURIComponent(title.replace(/[:]/g, ''));
-    return `https://placehold.co/800x450/111827/a855f7?text=${safeTitle}&font=Montserrat`;
+  const getImageUrl = (seedText) => {
+    const cleanSeed = encodeURIComponent(seedText.toLowerCase().trim());
+    return `https://api.dicebear.com/7.x/shapes/svg?seed=${cleanSeed}&backgroundColor=0f172a,1e1b4b,0284c7,312e81&shape1Color=a855f7,38bdf8,34d399,f43f5e&shape2Color=6366f1,818cf8,10b981`;
   };
 
   const DEVTALLES_COURSES = [
@@ -253,6 +267,8 @@ async function main() {
         userId: admin.id,
         title: 'Ruta Fullstack Node & React',
         description: 'Grafo complejo con ramas paralelas.',
+        imageUrl: getImageUrl('Ruta Fullstack Node & React'),
+        isPublic: true,
       },
     });
 

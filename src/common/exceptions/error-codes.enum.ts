@@ -30,6 +30,7 @@ export enum ErrorCodes {
 
   // Business domain: catalog
   COURSE_NOT_FOUND = 'COURSE_NOT_FOUND',
+  SLUG_ALREADY_EXISTS = 'SLUG_ALREADY_EXISTS',
 
   // Business domain: paths & questionnaire
   INVALID_QUESTION_OPTION = 'INVALID_QUESTION_OPTION',

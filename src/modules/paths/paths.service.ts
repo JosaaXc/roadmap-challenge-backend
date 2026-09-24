@@ -16,16 +16,15 @@ import type { PathQueryDto } from './dto/path-query.dto.js';
 import type { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 
 export type PathWithGraph = Prisma.LearningPathGetPayload<{
-  include: { nodes: true; edges: true };
+  include: { nodes: { include: { course: { select: { imageUrl: true } } } }; edges: true };
 }>;
 
 export type PathWithNextStep = PathWithGraph & { nextStep: string | null };
 
-// Deterministic node order (explicit sequence) — the base for `nextStep`.
-const NODES_ORDERED: Prisma.LearningPathInclude = {
-  nodes: { orderBy: { position: 'asc' } },
+const NODES_ORDERED = Prisma.validator<Prisma.LearningPathInclude>()({
+  nodes: { orderBy: { position: 'asc' }, include: { course: { select: { imageUrl: true } } } },
   edges: true,
-};
+});
 
 function withNextStep<T extends PathWithGraph>(path: T): T & { nextStep: string | null } {
   const next = path.nodes.find((node) => !node.isCompleted) ?? null;
@@ -98,11 +97,15 @@ export class PathsService {
       })),
     });
 
+    const pathTitle = titleFromTags(consolidatedTags);
+    const pathImageUrl = courses[0]?.imageUrl ?? null;
+
     const path = await tx.learningPath.create({
       data: {
         userId,
-        title: titleFromTags(consolidatedTags),
+        title: pathTitle,
         description: `Generada a partir de ${validated.length} respuestas del cuestionario.`,
+        imageUrl: pathImageUrl,
       },
     });
 
@@ -166,7 +169,7 @@ export class PathsService {
     return { ...page, items: page.items.map(withNextStep) };
   }
 
-  async findPathById(callerUserId: string, pathId: string) {
+  async findPathById(callerUserId: string, pathId: string): Promise<PathWithGraph> {
     const path = await this.prisma.learningPath.findFirst({
       where: { id: pathId },
       include: { ...NODES_ORDERED },
@@ -174,7 +177,95 @@ export class PathsService {
     if (!path || (path.userId !== callerUserId && !path.isPublic)) {
       throw new AppException(ErrorCodes.PATH_NOT_FOUND, `Learning path "${pathId}" was not found.`, HttpStatus.NOT_FOUND);
     }
-    return withNextStep(path);
+    return path;
+  }
+
+  async findCommunityPaths(dto: PathQueryDto) {
+    type CommunityRow = Prisma.LearningPathGetPayload<{
+      include: {
+        nodes: { select: { id: true } };
+        user: { select: { username: true } };
+      };
+    }>;
+    const delegate: CursorFindManyDelegate<CommunityRow, Prisma.LearningPathFindManyArgs> = {
+      findMany: (args) => this.prisma.learningPath.findMany(args) as Promise<CommunityRow[]>,
+    };
+    const page = await paginateWithCursor(
+      delegate,
+      {
+        where: { isPublic: true },
+        include: {
+          nodes: { select: { id: true } },
+          user: { select: { username: true } },
+        },
+      },
+      dto,
+    );
+    return {
+      ...page,
+      items: page.items.map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        progress: row.progress,
+        imageUrl: row.imageUrl,
+        nodeCount: row.nodes.length,
+        owner: { username: row.user.username },
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      })),
+    };
+  }
+
+  async findAllPathsAdmin(dto: PathQueryDto) {
+    type AdminRow = Prisma.LearningPathGetPayload<{
+      include: {
+        nodes: { select: { id: true } };
+        user: { select: { username: true } };
+      };
+    }>;
+    const delegate: CursorFindManyDelegate<AdminRow, Prisma.LearningPathFindManyArgs> = {
+      findMany: (args) => this.prisma.learningPath.findMany(args) as Promise<AdminRow[]>,
+    };
+    const page = await paginateWithCursor(
+      delegate,
+      {
+        include: {
+          nodes: { select: { id: true } },
+          user: { select: { username: true } },
+        },
+      },
+      dto,
+    );
+    return {
+      ...page,
+      items: page.items.map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        progress: row.progress,
+        imageUrl: row.imageUrl,
+        isPublic: row.isPublic,
+        nodeCount: row.nodes.length,
+        owner: { username: row.user.username },
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      })),
+    };
+  }
+
+  @Transactional()
+  async adminDeletePath(pathId: string) {
+    const tx = this.prisma.tx;
+    const path = await tx.learningPath.findUnique({ where: { id: pathId } });
+    if (!path) {
+      throw new AppException(
+        ErrorCodes.PATH_NOT_FOUND,
+        `Learning path "${pathId}" was not found.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    await tx.learningPath.delete({ where: { id: pathId } });
   }
 
   private async validateAnswers(
@@ -392,6 +483,7 @@ export class PathsService {
         userId: callerUserId,
         title: `${source.title} (Fork)`,
         description: source.description,
+        imageUrl: source.imageUrl,
         progress: 0,
         isFavorite: false,
         isPublic: false,
