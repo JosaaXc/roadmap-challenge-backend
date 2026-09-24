@@ -104,9 +104,9 @@ async function main() {
   const admin = await prisma.user.findUnique({ where: { email: adminEmail } });
 
   console.log('[SEED] 🚀 Sembrando catálogo DevTalles...');
-  const getImageUrl = (title) => {
-    const safeTitle = encodeURIComponent(title.replace(/[:]/g, ''));
-    return `https://placehold.co/800x450/111827/a855f7?text=${safeTitle}&font=Montserrat`;
+  const getImageUrl = (seedText) => {
+    const cleanSeed = encodeURIComponent(seedText.toLowerCase().trim());
+    return `https://api.dicebear.com/7.x/shapes/svg?seed=${cleanSeed}&backgroundColor=0f172a,1e1b4b,0284c7,312e81&shape1Color=a855f7,38bdf8,34d399,f43f5e&shape2Color=6366f1,818cf8,10b981`;
   };
 
   const DEVTALLES_COURSES = [
@@ -253,6 +253,8 @@ async function main() {
         userId: admin.id,
         title: 'Ruta Fullstack Node & React',
         description: 'Grafo complejo con ramas paralelas.',
+        imageUrl: getImageUrl('Ruta Fullstack Node & React'),
+        isPublic: true,
       },
     });
 

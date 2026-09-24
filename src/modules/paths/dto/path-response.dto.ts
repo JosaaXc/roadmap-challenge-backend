@@ -20,6 +20,9 @@ export class PathNodeResponseDto {
   @ApiPropertyOptional({ format: 'uuid', nullable: true })
   courseId!: string | null;
 
+  @ApiPropertyOptional({ type: 'string', nullable: true, example: 'https://placehold.co/800x450/111827/a855f7?text=NestJS' })
+  imageUrl!: string | null;
+
   @ApiPropertyOptional({ type: 'string', nullable: true })
   externalUrl!: string | null;
 }
@@ -53,6 +56,9 @@ export class PathResponseDto {
 
   @ApiProperty({ example: 0 })
   progress!: number;
+
+  @ApiPropertyOptional({ type: 'string', nullable: true, example: 'https://placehold.co/800x450/111827/a855f7?text=Frontend' })
+  imageUrl!: string | null;
 
   @ApiProperty({ example: false })
   isFavorite!: boolean;

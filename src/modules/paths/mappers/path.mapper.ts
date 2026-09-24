@@ -12,6 +12,7 @@ export class PathMapper {
       title: path.title,
       description: path.description,
       progress: path.progress,
+      imageUrl: path.imageUrl,
       isFavorite: path.isFavorite,
       isPublic: path.isPublic,
       nodes: path.nodes.map((node) => ({
@@ -21,6 +22,7 @@ export class PathMapper {
         isCompleted: node.isCompleted,
         position: node.position,
         courseId: node.courseId,
+        imageUrl: node.course?.imageUrl ?? null,
         externalUrl: node.externalUrl,
       })),
       edges: path.edges.map((edge) => ({

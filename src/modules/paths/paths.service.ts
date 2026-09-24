@@ -16,16 +16,15 @@ import type { PathQueryDto } from './dto/path-query.dto.js';
 import type { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 
 export type PathWithGraph = Prisma.LearningPathGetPayload<{
-  include: { nodes: true; edges: true };
+  include: { nodes: { include: { course: { select: { imageUrl: true } } } }; edges: true };
 }>;
 
 export type PathWithNextStep = PathWithGraph & { nextStep: string | null };
 
-// Deterministic node order (explicit sequence) — the base for `nextStep`.
-const NODES_ORDERED: Prisma.LearningPathInclude = {
-  nodes: { orderBy: { position: 'asc' } },
+const NODES_ORDERED = Prisma.validator<Prisma.LearningPathInclude>()({
+  nodes: { orderBy: { position: 'asc' }, include: { course: { select: { imageUrl: true } } } },
   edges: true,
-};
+});
 
 function withNextStep<T extends PathWithGraph>(path: T): T & { nextStep: string | null } {
   const next = path.nodes.find((node) => !node.isCompleted) ?? null;
@@ -98,11 +97,15 @@ export class PathsService {
       })),
     });
 
+    const pathTitle = titleFromTags(consolidatedTags);
+    const pathImageUrl = courses[0]?.imageUrl ?? null;
+
     const path = await tx.learningPath.create({
       data: {
         userId,
-        title: titleFromTags(consolidatedTags),
+        title: pathTitle,
         description: `Generada a partir de ${validated.length} respuestas del cuestionario.`,
+        imageUrl: pathImageUrl,
       },
     });
 
@@ -205,6 +208,7 @@ export class PathsService {
         title: row.title,
         description: row.description,
         progress: row.progress,
+        imageUrl: row.imageUrl,
         nodeCount: row._count.nodes,
         owner: { username: row.user.username },
         createdAt: row.createdAt,
@@ -428,6 +432,7 @@ export class PathsService {
         userId: callerUserId,
         title: `${source.title} (Fork)`,
         description: source.description,
+        imageUrl: source.imageUrl,
         progress: 0,
         isFavorite: false,
         isPublic: false,

@@ -45,8 +45,9 @@ export class PathsController {
   @ApiEnvelopeError(400, 'Invalid question/option combination.', 'INVALID_QUESTION_OPTION')
   @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
   @ApiEnvelopeError(422, 'No active courses match the selected answers.', 'INVALID_QUESTION_OPTION')
-  generate(@Body() dto: GeneratePathDto) {
-    return this.pathsService.generateDynamicPath(this.currentUserId(), dto);
+  async generate(@Body() dto: GeneratePathDto): Promise<PathResponseDto> {
+    const path = await this.pathsService.generateDynamicPath(this.currentUserId(), dto);
+    return PathMapper.toResponseDto(path, this.currentUserId());
   }
 
   @Get()
@@ -56,8 +57,12 @@ export class PathsController {
   @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'], description: 'Cursor order (default desc).' })
   @ApiEnvelopePaginatedResponse(200, 'Learning paths retrieved successfully.', PathResponseDto)
   @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
-  findMine(@Query() dto: PathQueryDto) {
-    return this.pathsService.findMyPaths(this.currentUserId(), dto);
+  async findMine(@Query() dto: PathQueryDto) {
+    const page = await this.pathsService.findMyPaths(this.currentUserId(), dto);
+    return {
+      ...page,
+      items: page.items.map((item) => PathMapper.toResponseDto(item, this.currentUserId())),
+    };
   }
 
   @Get('community')
@@ -153,8 +158,9 @@ export class PathsController {
   @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
   @ApiEnvelopeError(404, 'Source path not found or not public.', 'PATH_NOT_FOUND')
   @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
-  fork(@Param('pathId') pathId: string) {
-    return this.pathsService.forkPath(this.currentUserId(), pathId);
+  async fork(@Param('pathId') pathId: string): Promise<PathResponseDto> {
+    const path = await this.pathsService.forkPath(this.currentUserId(), pathId);
+    return PathMapper.toResponseDto(path, this.currentUserId());
   }
 
   @Delete(':pathId/nodes/:nodeId')
