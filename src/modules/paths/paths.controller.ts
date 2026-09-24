@@ -13,7 +13,9 @@ import { PathsService } from './paths.service.js';
 import { GeneratePathDto } from './dto/generate-path.dto.js';
 import { PathQueryDto } from './dto/path-query.dto.js';
 import { PathResponseDto, NodeProgressResponseDto, FavoriteResponseDto, VisibilityResponseDto } from './dto/path-response.dto.js';
+import { CommunityPathDto } from './dto/community-path.dto.js';
 import { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
+import { PathMapper } from './mappers/path.mapper.js';
 
 @ApiTags('Paths')
 @ApiBearerAuth()
@@ -58,14 +60,34 @@ export class PathsController {
     return this.pathsService.findMyPaths(this.currentUserId(), dto);
   }
 
+  @Get('community')
+  @ApiOperation({
+    summary: 'Discover public community paths (fork them to start your own copy).',
+    description:
+      'Progress shown belongs to the author (social proof). Favorite/fork from here, then track progress on your own copy.',
+  })
+  @ApiQuery({ name: 'take', required: false, type: Number, description: 'Max items (1-50, default 10).' })
+  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Last id from the previous page.' })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'], description: 'Cursor order (default desc).' })
+  @ApiEnvelopePaginatedResponse(200, 'Community paths retrieved successfully.', CommunityPathDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
+  findCommunity(@Query() dto: PathQueryDto) {
+    return this.pathsService.findCommunityPaths(dto);
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: "Get a single learning path with its graph (nodes + edges)." })
+  @ApiOperation({
+    summary: 'Get a single learning path with its graph (nodes + edges).',
+    description:
+      'Own paths include your live nextStep. Foreign public paths return nextStep: null (their progress is not yours) — fork to start tracking.',
+  })
   @ApiParam({ name: 'id', description: 'Learning path UUID.' })
   @ApiEnvelopeResponse(200, 'Learning path found.', PathResponseDto)
   @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
-  findOne(@Param('id') id: string) {
-    return this.pathsService.findPathById(this.currentUserId(), id);
+  async findOne(@Param('id') id: string): Promise<PathResponseDto> {
+    const path = await this.pathsService.findPathById(this.currentUserId(), id);
+    return PathMapper.toResponseDto(path, this.currentUserId());
   }
 
   @Patch(':pathId/nodes/:nodeId/complete')

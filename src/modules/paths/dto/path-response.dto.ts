@@ -42,6 +42,9 @@ export class PathResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 
+  @ApiProperty({ format: 'uuid', description: 'Owner id — compare with GET /users/me to know if it is yours.' })
+  userId!: string;
+
   @ApiProperty({ example: 'Ruta Personalizada: Frontend & React' })
   title!: string;
 
@@ -66,7 +69,8 @@ export class PathResponseDto {
   @ApiPropertyOptional({
     type: 'string',
     nullable: true,
-    description: 'Title of the first incomplete node (creation order), null when 100% complete.',
+    description:
+      'Title of the first incomplete node for the path owner. Returns null if the path is 100% completed OR if viewed by a non-owner user (foreign public path).',
     example: 'NestJS: De cero a experto',
   })
   nextStep!: string | null;

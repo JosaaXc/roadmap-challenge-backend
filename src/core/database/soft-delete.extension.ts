@@ -55,6 +55,85 @@ interface ModelDelegate {
   deleteMany(args: Any): Any;
 }
 
+/** Relation field -> target model, to filter soft-deleted rows in nested includes. */
+const RELATION_MODEL: Record<string, string> = {
+  user: 'User',
+  role: 'Role',
+  accounts: 'UserAccount',
+  refreshTokens: 'RefreshToken',
+  learningPaths: 'LearningPath',
+  submissions: 'QuestionnaireSubmission',
+  submission: 'QuestionnaireSubmission',
+  answers: 'Answer',
+  generatedPath: 'LearningPath',
+  nodes: 'PathNode',
+  edges: 'PathEdge',
+  path: 'LearningPath',
+  course: 'Course',
+  outgoingEdges: 'PathEdge',
+  incomingEdges: 'PathEdge',
+  sourceNode: 'PathNode',
+  targetNode: 'PathNode',
+  question: 'Question',
+  option: 'QuestionOption',
+  options: 'QuestionOption',
+  permissions: 'RolePermission',
+  roles: 'RolePermission',
+  permission: 'Permission',
+};
+
+export function withRelationFilters<T>(args: T): T {
+  if (!args || typeof args !== 'object') return args;
+  const root = args as Record<string, unknown>;
+  for (const container of ['include', 'select'] as const) {
+    const block = root[container];
+    if (block && typeof block === 'object') {
+      applyToBlock(block as Record<string, unknown>);
+    }
+  }
+  return args;
+}
+
+const TO_MANY_RELATIONS: ReadonlySet<string> = new Set([
+  'accounts',
+  'refreshTokens',
+  'learningPaths',
+  'submissions',
+  'answers',
+  'nodes',
+  'edges',
+  'options',
+  'outgoingEdges',
+  'incomingEdges',
+  'permissions',
+  'roles',
+]);
+
+function applyToBlock(block: Record<string, unknown>): void {
+  for (const [field, selection] of Object.entries(block)) {
+    const target = RELATION_MODEL[field];
+    if (!target) continue;
+    const many = TO_MANY_RELATIONS.has(field) && isSoftDeletable(target);
+    if (selection === true) {
+      if (many) {
+        block[field] = { where: { deletedAt: null } };
+      }
+      continue;
+    }
+    if (!selection || typeof selection !== 'object') continue;
+    const nested = selection as Record<string, unknown>;
+    if (many) {
+      nested.where = withAliveFilter(nested.where as Where | undefined);
+    }
+    for (const container of ['include', 'select'] as const) {
+      const inner = nested[container];
+      if (inner && typeof inner === 'object') {
+        applyToBlock(inner as Record<string, unknown>);
+      }
+    }
+  }
+}
+
 /** Keeps select/include/omit while rebuilding args for a rewritten operation. */
 function resultArgs(args: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -77,43 +156,43 @@ export function buildSoftDeleteExtension(rawClient: unknown) {
         findMany({ model, args, query }: HookParams) {
           if (isBypassed() || !isSoftDeletable(model)) return query(args);
           const a = (args ?? {}) as { where?: Where } & Record<string, unknown>;
-          return query({ ...a, where: withAliveFilter(a.where) });
+          return query(withRelationFilters({ ...a, where: withAliveFilter(a.where) }));
         },
 
         findFirst({ model, args, query }: HookParams) {
           if (isBypassed() || !isSoftDeletable(model)) return query(args);
           const a = (args ?? {}) as { where?: Where } & Record<string, unknown>;
-          return query({ ...a, where: withAliveFilter(a.where) });
+          return query(withRelationFilters({ ...a, where: withAliveFilter(a.where) }));
         },
 
         findFirstOrThrow({ model, args, query }: HookParams) {
           if (isBypassed() || !isSoftDeletable(model)) return query(args);
           const a = (args ?? {}) as { where?: Where } & Record<string, unknown>;
-          return query({ ...a, where: withAliveFilter(a.where) });
+          return query(withRelationFilters({ ...a, where: withAliveFilter(a.where) }));
         },
 
         findUnique({ model, args, query }: HookParams) {
           if (isBypassed() || !isSoftDeletable(model)) return query(args);
           const { where, ...rest } = (args ?? {}) as { where?: Where } & Record<string, unknown>;
-          return runBypassed(() => delegateOf(model).findFirst({ ...rest, where: withAliveFilter(where) }));
+          return runBypassed(() => delegateOf(model).findFirst(withRelationFilters({ ...rest, where: withAliveFilter(where) })));
         },
 
         findUniqueOrThrow({ model, args, query }: HookParams) {
           if (isBypassed() || !isSoftDeletable(model)) return query(args);
           const { where, ...rest } = (args ?? {}) as { where?: Where } & Record<string, unknown>;
-          return runBypassed(() => delegateOf(model).findFirstOrThrow({ ...rest, where: withAliveFilter(where) }));
+          return runBypassed(() => delegateOf(model).findFirstOrThrow(withRelationFilters({ ...rest, where: withAliveFilter(where) })));
         },
 
         count({ model, args, query }: HookParams) {
           if (isBypassed() || !isSoftDeletable(model)) return query(args);
           const a = (args ?? {}) as { where?: Where } & Record<string, unknown>;
-          return query({ ...a, where: withAliveFilter(a.where) });
+          return query(withRelationFilters({ ...a, where: withAliveFilter(a.where) }));
         },
 
         updateMany({ model, args, query }: HookParams) {
           if (isBypassed() || !isSoftDeletable(model)) return query(args);
           const a = (args ?? {}) as { where?: Where } & Record<string, unknown>;
-          return query({ ...a, where: withAliveFilter(a.where) });
+          return query(withRelationFilters({ ...a, where: withAliveFilter(a.where) }));
         },
 
         update({ model, args, query }: HookParams) {
@@ -125,7 +204,7 @@ export function buildSoftDeleteExtension(rawClient: unknown) {
               select: { id: true },
             });
             if (!existing) throw prismaNotFoundError();
-            return delegateOf(model).update(args);
+            return delegateOf(model).update(withRelationFilters(args));
           });
         },
 
@@ -141,11 +220,13 @@ export function buildSoftDeleteExtension(rawClient: unknown) {
             });
             if (!existing) throw prismaNotFoundError();
             const { where, ...rest } = a;
-            return delegateOf(model).update({
-              ...resultArgs(rest),
-              where,
-              data: { deletedAt: new Date() },
-            });
+            return delegateOf(model).update(
+              withRelationFilters({
+                ...resultArgs(rest),
+                where,
+                data: { deletedAt: new Date() },
+              }),
+            );
           });
         },
 
@@ -161,9 +242,9 @@ export function buildSoftDeleteExtension(rawClient: unknown) {
               select: { id: true },
             });
             if (existing) {
-              return delegateOf(model).update({ ...resultArgs(a), where: a.where, data: a.update });
+              return delegateOf(model).update(withRelationFilters({ ...resultArgs(a), where: a.where, data: a.update }));
             }
-            return delegateOf(model).create({ ...resultArgs(a), data: a.create });
+            return delegateOf(model).create(withRelationFilters({ ...resultArgs(a), data: a.create }));
           });
         },
       },

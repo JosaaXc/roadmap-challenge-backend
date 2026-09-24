@@ -166,7 +166,7 @@ export class PathsService {
     return { ...page, items: page.items.map(withNextStep) };
   }
 
-  async findPathById(callerUserId: string, pathId: string) {
+  async findPathById(callerUserId: string, pathId: string): Promise<PathWithGraph> {
     const path = await this.prisma.learningPath.findFirst({
       where: { id: pathId },
       include: { ...NODES_ORDERED },
@@ -174,7 +174,43 @@ export class PathsService {
     if (!path || (path.userId !== callerUserId && !path.isPublic)) {
       throw new AppException(ErrorCodes.PATH_NOT_FOUND, `Learning path "${pathId}" was not found.`, HttpStatus.NOT_FOUND);
     }
-    return withNextStep(path);
+    return path;
+  }
+
+  async findCommunityPaths(dto: PathQueryDto) {
+    type CommunityRow = Prisma.LearningPathGetPayload<{
+      include: {
+        _count: { select: { nodes: { where: { deletedAt: null } } } };
+        user: { select: { username: true } };
+      };
+    }>;
+    const delegate: CursorFindManyDelegate<CommunityRow, Prisma.LearningPathFindManyArgs> = {
+      findMany: (args) => this.prisma.learningPath.findMany(args) as Promise<CommunityRow[]>,
+    };
+    const page = await paginateWithCursor(
+      delegate,
+      {
+        where: { isPublic: true },
+        include: {
+          _count: { select: { nodes: { where: { deletedAt: null } } } },
+          user: { select: { username: true } },
+        },
+      },
+      dto,
+    );
+    return {
+      ...page,
+      items: page.items.map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        progress: row.progress,
+        nodeCount: row._count.nodes,
+        owner: { username: row.user.username },
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      })),
+    };
   }
 
   private async validateAnswers(
