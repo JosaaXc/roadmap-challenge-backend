@@ -16,6 +16,7 @@ import { PathResponseDto, NodeProgressResponseDto, FavoriteResponseDto, Visibili
 import { CommunityPathDto } from './dto/community-path.dto.js';
 import { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 import { PathMapper } from './mappers/path.mapper.js';
+import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
 
 @ApiTags('Paths')
 @ApiBearerAuth()
@@ -184,5 +185,33 @@ export class PathsController {
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   remove(@Param('id') id: string): Promise<void> {
     return this.pathsService.deletePath(this.currentUserId(), id);
+  }
+
+  @Get('admin/all')
+  @RequirePermissions('paths:manage')
+  @ApiTags('Admin - Paths')
+  @ApiOperation({ summary: 'List all paths globally for supervision (Admin only).' })
+  @ApiQuery({ name: 'take', required: false, type: Number, description: 'Max items (1-50, default 10).' })
+  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Last id from the previous page.' })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'], description: 'Cursor order (default desc).' })
+  @ApiEnvelopePaginatedResponse(200, 'Paths retrieved successfully (ignores privacy flags).', CommunityPathDto)
+  @ApiEnvelopeError(401, 'Unauthorized or missing token.', 'INVALID_TOKEN')
+  @ApiEnvelopeError(403, 'Forbidden. Requires paths:manage permission.', 'FORBIDDEN_RESOURCE')
+  findAllPathsAdmin(@Query() dto: PathQueryDto) {
+    return this.pathsService.findAllPathsAdmin(dto);
+  }
+
+  @Delete('admin/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions('paths:manage')
+  @ApiTags('Admin - Paths')
+  @ApiOperation({ summary: 'Force delete any learning path (Admin only).' })
+  @ApiParam({ name: 'id', description: 'Learning path UUID.' })
+  @ApiEnvelopeResponse(204, 'Learning path force-deleted successfully.')
+  @ApiEnvelopeError(401, 'Unauthorized or missing token.', 'INVALID_TOKEN')
+  @ApiEnvelopeError(403, 'Forbidden. Requires paths:manage permission.', 'FORBIDDEN_RESOURCE')
+  @ApiEnvelopeError(404, 'Learning path not found.', 'PATH_NOT_FOUND')
+  adminDeletePath(@Param('id') id: string): Promise<void> {
+    return this.pathsService.adminDeletePath(id);
   }
 }

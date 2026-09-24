@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
-import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator.js';
+import { PERMISSIONS_KEY, REQUIRE_ALL_PERMISSIONS_KEY } from '../decorators/require-permissions.decorator.js';
 import { AppException } from '../exceptions/app.exception.js';
 import { ErrorCodes } from '../exceptions/error-codes.enum.js';
 import { getAuthContext } from '../middlewares/tracing.context.js';
@@ -18,10 +18,11 @@ const ROLE_PERMISSIONS_TTL_SECONDS = 60 * 60; // 1 hour, overridable via env
 
 /**
  * Dynamic RBAC gate: runs after JwtAuthGuard has populated the auth context.
- * Requires ALL permissions declared via @RequirePermissions(...) to be
- * present on the caller's role. Role -> permissions lookups are cached in
- * Redis (Cache-Aside, 1h TTL) so authorization never becomes a hot path
- * against Postgres.
+ * `@RequirePermissions(...)` passes when the caller has ANY of the listed
+ * permissions (OR); `@RequireAllPermissions(...)` requires ALL of them (AND).
+ * Prefer a single permission per endpoint. Role -> permissions lookups are
+ * cached in Redis (Cache-Aside, 1h TTL) so authorization never becomes a hot
+ * path against Postgres.
  */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -30,7 +31,7 @@ export class PermissionsGuard implements CanActivate {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
@@ -38,7 +39,15 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    if (!requiredPermissions || requiredPermissions.length === 0) {
+    const requiredAllPermissions = this.reflector.getAllAndOverride<string[]>(
+      REQUIRE_ALL_PERMISSIONS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+
+    if (
+      (!requiredPermissions || requiredPermissions.length === 0) &&
+      (!requiredAllPermissions || requiredAllPermissions.length === 0)
+    ) {
       return true;
     }
 
@@ -53,7 +62,22 @@ export class PermissionsGuard implements CanActivate {
 
     const grantedPermissions = await this.resolveRolePermissions(auth.roleId);
 
-    const missing = requiredPermissions.filter(
+    if (requiredPermissions && requiredPermissions.length > 0) {
+      const hasAny = requiredPermissions.some((permission) =>
+        grantedPermissions.includes(permission),
+      );
+      if (!hasAny) {
+        throw new AppException(
+          ErrorCodes.FORBIDDEN_RESOURCE,
+          `Missing required permission(s): ${requiredPermissions.join(', ')}.`,
+          HttpStatus.FORBIDDEN,
+          { missing: requiredPermissions },
+        );
+      }
+    }
+
+    // AND semantics (explicit opt-in via @RequireAllPermissions).
+    const missing = (requiredAllPermissions ?? []).filter(
       (permission) => !grantedPermissions.includes(permission),
     );
 

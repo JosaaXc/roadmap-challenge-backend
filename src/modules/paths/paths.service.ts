@@ -183,7 +183,7 @@ export class PathsService {
   async findCommunityPaths(dto: PathQueryDto) {
     type CommunityRow = Prisma.LearningPathGetPayload<{
       include: {
-        _count: { select: { nodes: { where: { deletedAt: null } } } };
+        nodes: { select: { id: true } };
         user: { select: { username: true } };
       };
     }>;
@@ -195,7 +195,7 @@ export class PathsService {
       {
         where: { isPublic: true },
         include: {
-          _count: { select: { nodes: { where: { deletedAt: null } } } },
+          nodes: { select: { id: true } },
           user: { select: { username: true } },
         },
       },
@@ -209,12 +209,63 @@ export class PathsService {
         description: row.description,
         progress: row.progress,
         imageUrl: row.imageUrl,
-        nodeCount: row._count.nodes,
+        nodeCount: row.nodes.length,
         owner: { username: row.user.username },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       })),
     };
+  }
+
+  async findAllPathsAdmin(dto: PathQueryDto) {
+    type AdminRow = Prisma.LearningPathGetPayload<{
+      include: {
+        nodes: { select: { id: true } };
+        user: { select: { username: true } };
+      };
+    }>;
+    const delegate: CursorFindManyDelegate<AdminRow, Prisma.LearningPathFindManyArgs> = {
+      findMany: (args) => this.prisma.learningPath.findMany(args) as Promise<AdminRow[]>,
+    };
+    const page = await paginateWithCursor(
+      delegate,
+      {
+        include: {
+          nodes: { select: { id: true } },
+          user: { select: { username: true } },
+        },
+      },
+      dto,
+    );
+    return {
+      ...page,
+      items: page.items.map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        progress: row.progress,
+        imageUrl: row.imageUrl,
+        isPublic: row.isPublic,
+        nodeCount: row.nodes.length,
+        owner: { username: row.user.username },
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      })),
+    };
+  }
+
+  @Transactional()
+  async adminDeletePath(pathId: string) {
+    const tx = this.prisma.tx;
+    const path = await tx.learningPath.findUnique({ where: { id: pathId } });
+    if (!path) {
+      throw new AppException(
+        ErrorCodes.PATH_NOT_FOUND,
+        `Learning path "${pathId}" was not found.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    await tx.learningPath.delete({ where: { id: pathId } });
   }
 
   private async validateAnswers(
