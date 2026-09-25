@@ -6,6 +6,7 @@
 //   npm run db:seed
 //   npx prisma migrate reset   (runs this automatically via prisma.seed)
 
+import { readFile } from 'node:fs/promises';
 import { PrismaClient } from '@prisma/client';
 import argon2 from 'argon2';
 
@@ -118,62 +119,25 @@ async function main() {
   const admin = await prisma.user.findUnique({ where: { email: adminEmail } });
 
   console.log('[SEED] 🚀 Sembrando catálogo DevTalles...');
-  const getImageUrl = (seedText) => {
-    const cleanSeed = encodeURIComponent(seedText.toLowerCase().trim());
-    return `https://api.dicebear.com/7.x/shapes/svg?seed=${cleanSeed}&backgroundColor=0f172a,1e1b4b,0284c7,312e81&shape1Color=a855f7,38bdf8,34d399,f43f5e&shape2Color=6366f1,818cf8,10b981`;
-  };
-
-  const DEVTALLES_COURSES = [
-    // FRONTEND
-    { slug: 'angular-cero-experto', title: 'Angular: De cero a experto', level: 'BEGINNER', tags: ['frontend', 'angular', 'typescript', 'zoneless'] },
-    { slug: 'react-cero-experto', title: 'React: De cero a experto', level: 'BEGINNER', tags: ['frontend', 'react', 'javascript'] },
-    { slug: 'react-pro', title: 'React PRO: Arquitectura', level: 'ADVANCED', tags: ['frontend', 'react', 'architecture', 'typescript'] },
-    { slug: 'nextjs-framework', title: 'Next.js: El framework de React', level: 'INTERMEDIATE', tags: ['frontend', 'react', 'nextjs', 'ssr'] },
-    { slug: 'vue-js', title: 'Vue.js: De cero a experto', level: 'BEGINNER', tags: ['frontend', 'vue', 'javascript'] },
-    { slug: 'qwik-cero', title: 'Qwik: Nueva generación', level: 'INTERMEDIATE', tags: ['frontend', 'qwik', 'resumability'] },
-    { slug: 'solid-js', title: 'SolidJS: Reactividad pura', level: 'INTERMEDIATE', tags: ['frontend', 'solidjs', 'signals'] },
-    { slug: 'rxjs-reactivo', title: 'RxJS: Programación Reactiva', level: 'ADVANCED', tags: ['frontend', 'rxjs', 'angular', 'reactive'] },
-    // BACKEND
-    { slug: 'nodejs-cero-experto', title: 'Node.js: De cero a experto', level: 'BEGINNER', tags: ['backend', 'node', 'javascript'] },
-    { slug: 'nest-microservicios', title: 'NestJS + Microservicios', level: 'ADVANCED', tags: ['backend', 'nestjs', 'microservices', 'typescript'] },
-    { slug: 'nest-cero-experto', title: 'NestJS: De cero a experto', level: 'INTERMEDIATE', tags: ['backend', 'nestjs', 'typescript', 'api'] },
-    { slug: 'golang-backend', title: 'Golang: Backend Profesional', level: 'INTERMEDIATE', tags: ['backend', 'golang', 'api'] },
-    { slug: 'spring-ai', title: 'Spring AI: Java Inteligente', level: 'ADVANCED', tags: ['backend', 'java', 'spring', 'ai'] },
-    // DATABASE & DEVOPS
-    { slug: 'sql-cero', title: 'SQL: De cero a experto', level: 'BEGINNER', tags: ['database', 'sql', 'postgresql'] },
-    { slug: 'docker-guia', title: 'Docker: Guía práctica', level: 'INTERMEDIATE', tags: ['devops', 'docker', 'containers'] },
-    { slug: 'git-github', title: 'Git y GitHub', level: 'BEGINNER', tags: ['tools', 'git', 'github', 'devops'] },
-    { slug: 'linux-servidores', title: 'Linux para Servidores', level: 'INTERMEDIATE', tags: ['devops', 'linux', 'terminal'] },
-    // MOBILE
-    { slug: 'flutter-movil', title: 'Flutter: De cero a experto', level: 'BEGINNER', tags: ['mobile', 'flutter', 'dart', 'ios', 'android'] },
-    { slug: 'flutter-avanzado', title: 'Flutter Avanzado', level: 'ADVANCED', tags: ['mobile', 'flutter', 'architecture'] },
-    { slug: 'react-native', title: 'React Native: Nativas', level: 'INTERMEDIATE', tags: ['mobile', 'react-native', 'react'] },
-    // FUNDAMENTALS & AI
-    { slug: 'typescript-guia', title: 'TypeScript: Tu guía completa', level: 'BEGINNER', tags: ['frontend', 'backend', 'typescript', 'javascript'] },
-    { slug: 'javascript-moderno', title: 'JavaScript Moderno', level: 'BEGINNER', tags: ['frontend', 'javascript'] },
-    { slug: 'ia-developers', title: 'IA para Developers', level: 'ADVANCED', tags: ['ai', 'rag', 'claude', 'agents', 'node'] },
-    { slug: 'principios-solid', title: 'Principios SOLID', level: 'INTERMEDIATE', tags: ['architecture', 'clean-code', 'solid'] },
-  ];
+  // Generado con el scraper de cursos.devtalles.com y curado a mano.
+  const catalog = JSON.parse(await readFile(new URL('./data/devtalles-courses.json', import.meta.url), 'utf8'));
 
   const courseMap = {};
-  for (const course of DEVTALLES_COURSES) {
-    courseMap[course.slug] = await prisma.course.upsert({
-      where: { slug: course.slug },
-      update: {
-        title: course.title,
-        level: course.level,
-        tags: course.tags,
-        imageUrl: getImageUrl(course.title),
-        url: `https://cursos.devtalles.com/courses/${course.slug}`,
-      },
-      create: {
-        ...course,
-        description: `Aprende ${course.title} paso a paso con Fernando Herrera.`,
-        imageUrl: getImageUrl(course.title),
-        url: `https://cursos.devtalles.com/courses/${course.slug}`,
-      },
+  for (const { slug, title, description, level, tags, url, imageUrl } of catalog) {
+    const data = { title, description, level, tags, url, imageUrl, isActive: true };
+    courseMap[slug] = await prisma.course.upsert({
+      where: { slug },
+      update: data,
+      create: { slug, ...data },
     });
   }
+
+  // Se desactivan en vez de borrarse: puede haber rutas que todavía los referencian.
+  const { count: retired } = await prisma.course.updateMany({
+    where: { slug: { notIn: Object.keys(courseMap) }, isActive: true },
+    data: { isActive: false },
+  });
+  console.log(`[SEED] ${catalog.length} cursos activos, ${retired} desactivados por no estar en el catálogo.`);
 
   console.log('[SEED] 🧠 Generando cuestionario de perfilamiento...');
   // Orden FK: answers (Restrict) antes que questions
@@ -259,15 +223,16 @@ async function main() {
 
   console.log('[SEED] 🕸️ Construyendo grafo DAG de demostración...');
   if (admin) {
+    const demoImageUrl = courseMap['javascript-moderno'].imageUrl;
     const demoPath = await prisma.learningPath.upsert({
       where: { id: 'demo-path-001' },
-      update: { title: 'Ruta Fullstack Node & React' },
+      update: { title: 'Ruta Fullstack Node & React', imageUrl: demoImageUrl },
       create: {
         id: 'demo-path-001',
         userId: admin.id,
         title: 'Ruta Fullstack Node & React',
         description: 'Grafo complejo con ramas paralelas.',
-        imageUrl: getImageUrl('Ruta Fullstack Node & React'),
+        imageUrl: demoImageUrl,
         isPublic: true,
       },
     });
@@ -280,16 +245,16 @@ async function main() {
       data: { pathId: demoPath.id, title: 'JavaScript', type: 'DEVTALLES_COURSE', courseId: courseMap['javascript-moderno'].id, position: 0 },
     });
     const n2 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'TypeScript', type: 'DEVTALLES_COURSE', courseId: courseMap['typescript-guia'].id, position: 1 },
+      data: { pathId: demoPath.id, title: 'TypeScript', type: 'DEVTALLES_COURSE', courseId: courseMap['typescript-guia-completa'].id, position: 1 },
     });
     const n3 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'Node.js', type: 'DEVTALLES_COURSE', courseId: courseMap['nodejs-cero-experto'].id, position: 2 },
+      data: { pathId: demoPath.id, title: 'Node.js', type: 'DEVTALLES_COURSE', courseId: courseMap['nodejs-de-cero-a-experto'].id, position: 2 },
     });
     const n4 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'React', type: 'DEVTALLES_COURSE', courseId: courseMap['react-cero-experto'].id, position: 3 },
+      data: { pathId: demoPath.id, title: 'React', type: 'DEVTALLES_COURSE', courseId: courseMap['react-de-cero'].id, position: 3 },
     });
     const n5 = await prisma.pathNode.create({
-      data: { pathId: demoPath.id, title: 'SOLID', type: 'DEVTALLES_COURSE', courseId: courseMap['principios-solid'].id, position: 4 },
+      data: { pathId: demoPath.id, title: 'SOLID', type: 'DEVTALLES_COURSE', courseId: courseMap['solid-clean-code'].id, position: 4 },
     });
     const n6 = await prisma.pathNode.create({
       data: { pathId: demoPath.id, title: 'Proyecto Final MDN', type: 'EXTERNAL_LINK', externalUrl: 'https://developer.mozilla.org/es/', position: 5 },
