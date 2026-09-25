@@ -16,13 +16,13 @@ import type { PathQueryDto } from './dto/path-query.dto.js';
 import type { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 
 export type PathWithGraph = Prisma.LearningPathGetPayload<{
-  include: { nodes: { include: { course: { select: { imageUrl: true } } } }; edges: true };
+  include: { nodes: { include: { course: { select: { imageUrl: true; url: true } } } }; edges: true };
 }>;
 
 export type PathWithNextStep = PathWithGraph & { nextStep: string | null };
 
 const NODES_ORDERED = Prisma.validator<Prisma.LearningPathInclude>()({
-  nodes: { orderBy: { position: 'asc' }, include: { course: { select: { imageUrl: true } } } },
+  nodes: { orderBy: { position: 'asc' }, include: { course: { select: { imageUrl: true, url: true } } } },
   edges: true,
 });
 
