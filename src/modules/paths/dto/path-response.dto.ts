@@ -23,7 +23,20 @@ export class PathNodeResponseDto {
   @ApiPropertyOptional({ type: 'string', nullable: true, example: 'https://placehold.co/800x450/111827/a855f7?text=NestJS' })
   imageUrl!: string | null;
 
-  @ApiPropertyOptional({ type: 'string', nullable: true })
+  @ApiPropertyOptional({
+    type: 'string',
+    nullable: true,
+    description:
+      'Link to open for this node: the DevTalles course URL on DEVTALLES_COURSE nodes, the custom link on EXTERNAL_LINK ones.',
+    example: 'https://cursos.devtalles.com/courses/docker-guia-practica',
+  })
+  url!: string | null;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    nullable: true,
+    description: 'Custom link, only on EXTERNAL_LINK nodes. Always null on course nodes — use `url` instead.',
+  })
   externalUrl!: string | null;
 }
 

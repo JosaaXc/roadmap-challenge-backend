@@ -23,6 +23,9 @@ export class PathMapper {
         position: node.position,
         courseId: node.courseId,
         imageUrl: node.course?.imageUrl ?? null,
+        // Where the node points: the DevTalles course for course nodes, the
+        // user's own link for custom ones. Saves the client from branching.
+        url: node.course?.url ?? node.externalUrl,
         externalUrl: node.externalUrl,
       })),
       edges: path.edges.map((edge) => ({
