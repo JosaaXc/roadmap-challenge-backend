@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { IsPublic } from '../../common/decorators/is-public.decorator.js';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
 import { Idempotent } from '../../common/decorators/idempotent.decorator.js';
@@ -17,6 +17,30 @@ import { CreateCourseDto, UpdateCourseDto } from './dto/create-course.dto.js';
 @Controller('catalog')
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) { }
+
+  @Get('tags')
+  @IsPublic()
+  @ApiOperation({
+    summary: 'List the unified tag dictionary (courses + questionnaire options).',
+    description: 'Cached for 1h. Intended for admin autocomplete when authoring courses and question options.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Tags retrieved successfully.',
+    schema: {
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: { type: 'array', items: { type: 'string' }, example: ['angular', 'backend', 'frontend'] },
+        meta: {
+          type: 'object',
+          properties: { timestamp: { type: 'string', format: 'date-time' } },
+        },
+      },
+    },
+  })
+  getExistingTags(): Promise<string[]> {
+    return this.catalogService.getExistingTags();
+  }
 
   @Get('courses')
   @IsPublic()

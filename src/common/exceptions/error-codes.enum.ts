@@ -27,6 +27,7 @@ export enum ErrorCodes {
   // Identity (register/login/refresh)
   USER_ALREADY_EXISTS = 'USER_ALREADY_EXISTS',
   INVALID_REFRESH_TOKEN = 'INVALID_REFRESH_TOKEN',
+  PASSWORD_RESET_COOLDOWN = 'PASSWORD_RESET_COOLDOWN',
 
   // Business domain: catalog
   COURSE_NOT_FOUND = 'COURSE_NOT_FOUND',

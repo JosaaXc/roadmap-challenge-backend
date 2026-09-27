@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { IsPublic } from '../../common/decorators/is-public.decorator.js';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
@@ -6,12 +6,14 @@ import { Idempotent } from '../../common/decorators/idempotent.decorator.js';
 import { ApiEnvelopeError, ApiEnvelopeResponse } from '../../common/swagger/index.js';
 import { QuestionsService } from './questions.service.js';
 import { QuestionResponseDto } from './dto/questionnaire-response.dto.js';
+import { QuestionAdminResponseDto } from './dto/question-admin-response.dto.js';
 import {
   CreateQuestionDto,
   CreateQuestionOptionDto,
   UpdateQuestionDto,
   UpdateQuestionOptionDto,
 } from './dto/create-question.dto.js';
+import { ReorderQuestionsDto } from './dto/reorder-questions.dto.js';
 
 @ApiTags('Questions')
 @Controller('questions')
@@ -38,6 +40,37 @@ export class QuestionsController {
   @ApiEnvelopeError(403, 'Forbidden.', 'FORBIDDEN_RESOURCE')
   createQuestion(@Body() dto: CreateQuestionDto) {
     return this.questionsService.createQuestion(dto);
+  }
+
+  // Static route BEFORE '/:id' so 'reorder' is never captured as an id.
+  @Put('reorder')
+  @RequirePermissions('questions:update')
+  @ApiTags('Admin - Questions')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reorder multiple questions in a single batch (Admin only).' })
+  @ApiEnvelopeResponse(200, 'Questions reordered successfully.', QuestionResponseDto, { isArray: true })
+  @ApiEnvelopeError(401, 'Unauthorized.', 'INVALID_TOKEN')
+  @ApiEnvelopeError(403, 'Forbidden.', 'FORBIDDEN_RESOURCE')
+  @ApiEnvelopeError(400, 'Duplicate ids or newOrder values.', 'VALIDATION_ERROR')
+  @ApiEnvelopeError(404, 'Question not found.', 'RECORD_NOT_FOUND')
+  reorderQuestions(@Body() dto: ReorderQuestionsDto) {
+    return this.questionsService.reorderQuestions(dto);
+  }
+
+  // Static route BEFORE '/:id' so 'admin' is never captured as an id.
+  @Get('admin/all')
+  @RequirePermissions('questions:read')
+  @ApiTags('Admin - Questions')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List all questions with inference tags (Admin only).',
+    description: 'Unlike the public questionnaire, options expose tagsOutput so the admin panel can pre-fill edit forms.',
+  })
+  @ApiEnvelopeResponse(200, 'Questions retrieved successfully.', QuestionAdminResponseDto, { isArray: true })
+  @ApiEnvelopeError(401, 'Unauthorized.', 'INVALID_TOKEN')
+  @ApiEnvelopeError(403, 'Forbidden.', 'FORBIDDEN_RESOURCE')
+  findAllQuestionsAdmin() {
+    return this.questionsService.findAllQuestionsAdmin();
   }
 
   @Patch(':id')

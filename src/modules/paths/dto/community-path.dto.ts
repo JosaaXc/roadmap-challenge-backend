@@ -24,6 +24,12 @@ export class CommunityPathDto {
   @ApiProperty({ example: 6, description: 'Alive node count.' })
   nodeCount!: number;
 
+  @ApiProperty({ example: 5, description: 'How many times this path has been forked.' })
+  forksCount!: number;
+
+  @ApiProperty({ example: 10, description: 'Total likes.' })
+  likesCount!: number;
+
   @ApiProperty({ type: CommunityPathOwnerDto })
   owner!: CommunityPathOwnerDto;
 
@@ -32,4 +38,9 @@ export class CommunityPathDto {
 
   @ApiProperty({ format: 'date-time' })
   updatedAt!: Date;
+}
+
+export class ExploreCommunityPathDto extends CommunityPathDto {
+  @ApiProperty({ example: true, description: 'Whether the caller has liked this path.' })
+  hasLiked!: boolean;
 }

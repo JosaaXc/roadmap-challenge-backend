@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -38,6 +39,7 @@ export class CreateCourseDto {
   @ApiProperty({ type: [String], example: ['backend', 'nestjs', 'typescript'] })
   @IsArray()
   @IsString({ each: true })
+  @Transform(({ value }: { value?: string[] }) => value?.map((tag) => tag.trim().toLowerCase()))
   tags!: string[];
 
   @ApiProperty({ example: 'https://cursos.devtalles.com/courses/nest-cero-experto' })

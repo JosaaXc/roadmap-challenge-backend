@@ -1,16 +1,20 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, User } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import ms from 'ms';
 import { PrismaService } from '../../core/database/prisma.service.js';
+import { RedisService } from '../../core/cache/redis.service.js';
+import { MailService } from '../../core/mail/mail.service.js';
+import { sha256Hex, timingSafeEqualHex } from '../../common/utils/index.js';
 import { Transactional } from '../../core/database/transactional.decorator.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { ErrorCodes } from '../../common/exceptions/error-codes.enum.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
+import type { ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from './dto/password.dto.js';
 import type { TokenPairResponseDto } from './dto/token-pair-response.dto.js';
 import type { NormalizedOAuthProfile } from './interfaces/oauth-profile.interface.js';
 import type { UserResponseDto } from '../users/dto/user-response.dto.js';
@@ -36,10 +40,14 @@ interface TokenSubject {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger('AUTH');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly redis: RedisService,
+    private readonly mailService: MailService,
   ) { }
 
   @Transactional()
@@ -264,6 +272,104 @@ export class AuthService {
       where: { userId, isRevoked: false },
       data: { isRevoked: true },
     });
+  }
+
+  @Transactional()
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ message: string }> {
+    const user = await this.prisma.tx.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new AppException(
+        ErrorCodes.USER_NOT_FOUND,
+        'The user associated with this token no longer exists.',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    if (!user.passwordHash) {
+      throw new AppException(
+        ErrorCodes.VALIDATION_ERROR,
+        'This account uses external login and has no local password to change.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const currentValid = await argon2.verify(user.passwordHash, dto.currentPassword);
+    if (!currentValid) {
+      throw new AppException(ErrorCodes.INVALID_CREDENTIALS, 'Current password is incorrect.', HttpStatus.UNAUTHORIZED);
+    }
+    if (dto.newPassword === dto.currentPassword) {
+      throw new AppException(
+        ErrorCodes.VALIDATION_ERROR,
+        'New password must be different from the current password.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const passwordHash = await argon2.hash(dto.newPassword);
+    await this.prisma.tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.logoutAll(userId);
+    return { message: 'Password changed successfully.' };
+  }
+
+  async requestPasswordReset(dto: ForgotPasswordDto): Promise<{ success: true }> {
+    const email = dto.email.trim().toLowerCase();
+    const cooldownKey = `pwd_cooldown:${email}`;
+
+    if (await this.redis.get(cooldownKey)) {
+      throw new AppException(
+        ErrorCodes.PASSWORD_RESET_COOLDOWN,
+        'A reset code was recently requested. Please wait before trying again.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash || !user.isActive) {
+      return { success: true };
+    }
+
+    const length = this.configService.get<number>('OTP_LENGTH', 6);
+    const otp = String(randomInt(10 ** (length - 1), 10 ** length));
+    const ttlSeconds = this.configService.get<number>('OTP_TTL_SECONDS', 900);
+    const cooldownSeconds = this.configService.get<number>('OTP_COOLDOWN_SECONDS', 120);
+
+    await this.redis.set(`pwd_reset:${email}`, sha256Hex(otp), ttlSeconds);
+    await this.redis.set(cooldownKey, '1', cooldownSeconds);
+
+    if (this.mailService.isEnabled) {
+      await this.mailService.sendPasswordResetOtp(email, otp, Math.round(ttlSeconds / 60));
+    }
+
+    if (this.configService.get<string>('NODE_ENV', 'development') !== 'production') {
+      this.logger.debug(`Password reset OTP for ${email}: ${otp}`);
+    }
+    return { success: true };
+  }
+
+  @Transactional()
+  async confirmPasswordReset(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const email = dto.email.trim().toLowerCase();
+    const storedHash = await this.redis.get<string>(`pwd_reset:${email}`);
+    if (!storedHash || !timingSafeEqualHex(storedHash, sha256Hex(dto.otp))) {
+      throw new AppException(
+        ErrorCodes.INVALID_CREDENTIALS,
+        'Invalid or expired reset code.',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    const user = await this.prisma.tx.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash || !user.isActive) {
+      throw new AppException(
+        ErrorCodes.INVALID_CREDENTIALS,
+        'Invalid or expired reset code.',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    const passwordHash = await argon2.hash(dto.newPassword);
+    await this.prisma.tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await this.logoutAll(user.id);
+    await this.redis.del(`pwd_reset:${email}`);
+    return { message: 'Password reset successfully.' };
   }
 
   private async enforceMaxSessions(userId: string): Promise<void> {

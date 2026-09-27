@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -22,6 +22,7 @@ export class CreateQuestionOptionDto {
   @IsArray()
   @IsString({ each: true })
   @ArrayMinSize(1, { message: 'tagsOutput must contain at least 1 tag' })
+  @Transform(({ value }: { value?: string[] }) => value?.map((tag) => tag.trim().toLowerCase()))
   tagsOutput!: string[];
 }
 

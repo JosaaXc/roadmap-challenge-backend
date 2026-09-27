@@ -13,6 +13,7 @@ import { ErrorCodes } from '../../common/exceptions/error-codes.enum.js';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { ChangePasswordDto, ForgotPasswordDto, ForgotPasswordResponseDto, ResetPasswordDto } from './dto/password.dto.js';
 import { AuthResponseDto } from './dto/auth-response.dto.js';
 import { LogoutResponseDto } from './dto/logout-response.dto.js';
 import { TokenPairResponseDto } from './dto/token-pair-response.dto.js';
@@ -111,8 +112,7 @@ export class AuthController {
 
   @Post('logout/all')
   @ApiBearerAuth()
-  @ApiCookieAuth('refreshToken')
-  @ApiOperation({
+  @ApiCookieAuth('refreshToken')  @ApiOperation({
     summary: 'Log out all sessions (every device/browser).',
     description:
       'Revokes every active refresh token of the authenticated user and clears the current cookie. Use after password change or suspected compromise. Idempotent: succeeds with 200 even when no sessions remain. Access JWTs remain valid until their exp (max 15m).',
@@ -129,6 +129,52 @@ export class AuthController {
     await this.authService.logoutAll(auth.userId);
     this.clearRefreshTokenCookie(res);
     return { message: 'Logged out from all sessions successfully.' };
+  }
+
+  @Post('password/change')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Change the authenticated user password (revokes all sessions).',
+    description:
+      'Verifies the current password with Argon2, then revokes every refresh token via logoutAll. Access JWTs remain valid until their exp (max 15m).',
+  })
+  @ApiEnvelopeResponse(200, 'Password changed successfully.', LogoutResponseDto)
+  @ApiEnvelopeError(401, 'Current password is incorrect.', 'INVALID_CREDENTIALS')
+  @ApiEnvelopeError(400, 'New password equals current or account has no local password.', 'VALIDATION_ERROR')
+  @HttpCode(HttpStatus.OK)
+  changePassword(@Body() dto: ChangePasswordDto) {
+    const auth = getAuthContext();
+    if (!auth) {
+      throw new AppException(ErrorCodes.UNAUTHORIZED, 'Authentication context is missing.', HttpStatus.UNAUTHORIZED);
+    }
+    return this.authService.changePassword(auth.userId, dto);
+  }
+
+  @Post('password/forgot')
+  @IsPublic()
+  @ApiOperation({
+    summary: 'Request a numeric OTP to reset the password.',
+    description:
+      'Always returns success (even for unknown emails) to prevent user enumeration. At most one request per cooldown window per email (HTTP 429 otherwise).',
+  })
+  @ApiEnvelopeResponse(200, 'Reset code requested.', ForgotPasswordResponseDto)
+  @ApiEnvelopeError(429, 'A reset code was recently requested for this email.', 'PASSWORD_RESET_COOLDOWN')
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.requestPasswordReset(dto);
+  }
+
+  @Post('password/reset')
+  @IsPublic()
+  @ApiOperation({
+    summary: 'Reset the password with a valid OTP (revokes all sessions).',
+    description: 'The OTP is compared in constant time and is single-use. Failures return INVALID_CREDENTIALS to avoid oracles.',
+  })
+  @ApiEnvelopeResponse(200, 'Password reset successfully.', LogoutResponseDto)
+  @ApiEnvelopeError(401, 'Invalid or expired reset code.', 'INVALID_CREDENTIALS')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.confirmPasswordReset(dto);
   }
 
   @Get('discord')

@@ -14,6 +14,7 @@ import { validateEnv } from './core/config/env.validation.js';
 import { getLoggerConfig } from './core/logger/logger.config.js';
 import { DatabaseModule } from './core/database/database.module.js';
 import { CacheModule } from './core/cache/cache.module.js';
+import { MailModule } from './core/mail/mail.module.js';
 import { ThrottlerStorageRedisService } from './core/cache/throttler-storage-redis.service.js';
 import { HealthModule } from './core/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
@@ -72,6 +73,7 @@ import appConfig from './core/config/app.config.js';
     // 4. Infrastructure Modules
     DatabaseModule,
     CacheModule,
+    MailModule,
     HealthModule,
 
     // 5. Identity & Access Management (JWT RS256, JWKS, RBAC)

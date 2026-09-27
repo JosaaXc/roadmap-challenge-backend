@@ -26,6 +26,7 @@ model User {
   refreshTokens RefreshToken[]
   learningPaths LearningPath[]
   submissions   QuestionnaireSubmission[]
+  likes         PathLike[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -176,6 +177,15 @@ model LearningPath {
 
   submission QuestionnaireSubmission?
 
+  // Fork lineage (GitHub-style): direct parent + denormalized direct-fork counter.
+  forkedFromId String?
+  forkedFrom   LearningPath?  @relation("PathForks", fields: [forkedFromId], references: [id], onDelete: SetNull)
+  forks        LearningPath[] @relation("PathForks")
+  forksCount   Int            @default(0)
+
+  likes      PathLike[]
+  likesCount Int        @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -183,12 +193,26 @@ model LearningPath {
   @@index([userId])
   @@index([deletedAt])
   @@index([isPublic])
+  @@index([forkedFromId])
   @@map("learning_paths")
 }
 
 enum NodeType {
   DEVTALLES_COURSE
   EXTERNAL_LINK
+}
+
+model PathLike {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pathId    String
+  path      LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, pathId])
+  @@index([pathId])
+  @@map("path_likes")
 }
 
 model PathNode {

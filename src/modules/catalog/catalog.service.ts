@@ -1,6 +1,8 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Prisma, Course } from '@prisma/client';
 import { PrismaService } from '../../core/database/prisma.service.js';
+import { RedisService } from '../../core/cache/redis.service.js';
+import { catalogTagsCacheKey } from '../../common/cache/cache-keys.util.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { ErrorCodes } from '../../common/exceptions/error-codes.enum.js';
 import { Transactional } from '../../core/database/transactional.decorator.js';
@@ -8,9 +10,37 @@ import { PaginatedResult, paginateWithCursor } from '../../common/pagination/ind
 import type { CatalogQueryDto } from './dto/catalog-query.dto.js';
 import type { CreateCourseDto, UpdateCourseDto } from './dto/create-course.dto.js';
 
+const TAGS_CACHE_TTL_SECONDS = 3600; // 1h
+
 @Injectable()
 export class CatalogService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) { }
+
+  async getExistingTags(): Promise<string[]> {
+    const key = catalogTagsCacheKey();
+    const cached = await this.redis.get<string[]>(key);
+    if (cached) return cached;
+
+    const rows = await this.prisma.$queryRaw<Array<{ tag: string }>>`
+      SELECT DISTINCT unnest(tags) AS tag
+      FROM courses
+      WHERE "deletedAt" IS NULL AND "isActive" = TRUE
+      UNION
+      SELECT DISTINCT unnest(o."tagsOutput") AS tag
+      FROM question_options o
+      JOIN questions q ON q.id = o."questionId"
+      WHERE q."isActive" = TRUE
+    `;
+
+    const tags = [...new Set(rows.map((row) => row.tag.toLowerCase()))].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    await this.redis.set(key, tags, TAGS_CACHE_TTL_SECONDS);
+    return tags;
+  }
 
   findAllCourses(dto: CatalogQueryDto): Promise<PaginatedResult<Course>> {
     const where: Prisma.CourseWhereInput = { isActive: true };
@@ -52,7 +82,9 @@ export class CatalogService {
         HttpStatus.CONFLICT,
       );
     }
-    return tx.course.create({ data: dto });
+    const created = await tx.course.create({ data: dto });
+    await this.redis.del(catalogTagsCacheKey());
+    return created;
   }
 
   @Transactional()
@@ -79,7 +111,9 @@ export class CatalogService {
         );
       }
     }
-    return tx.course.update({ where: { id }, data: dto });
+    const updated = await tx.course.update({ where: { id }, data: dto });
+    await this.redis.del(catalogTagsCacheKey());
+    return updated;
   }
 
   @Transactional()
@@ -94,5 +128,6 @@ export class CatalogService {
       );
     }
     await tx.course.delete({ where: { id } });
+    await this.redis.del(catalogTagsCacheKey());
   }
 }
