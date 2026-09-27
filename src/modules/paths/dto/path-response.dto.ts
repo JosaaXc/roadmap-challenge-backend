@@ -100,6 +100,9 @@ export class PathResponseDto {
   })
   forkedFrom!: ForkParentResponseDto | null;
 
+  @ApiProperty({ example: 10, description: 'Total likes.' })
+  likesCount!: number;
+
   @ApiProperty({ type: [PathNodeResponseDto] })
   nodes!: PathNodeResponseDto[];
 
@@ -144,4 +147,12 @@ export class VisibilityResponseDto {
 
   @ApiProperty({ example: true })
   isPublic!: boolean;
+}
+
+export class LikeResponseDto {
+  @ApiProperty({ example: true, description: 'True when the path is now liked by the caller.' })
+  liked!: boolean;
+
+  @ApiProperty({ example: 10, description: 'Total likes after this operation.' })
+  likesCount!: number;
 }

@@ -217,6 +217,7 @@ export class PathsService {
         imageUrl: row.imageUrl,
         nodeCount: row.nodes.length,
         forksCount: row.forksCount,
+        likesCount: row.likesCount,
         owner: { username: row.user.username },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
@@ -255,6 +256,7 @@ export class PathsService {
         isPublic: row.isPublic,
         nodeCount: row.nodes.length,
         forksCount: row.forksCount,
+        likesCount: row.likesCount,
         owner: { username: row.user.username },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
@@ -458,6 +460,57 @@ export class PathsService {
       data: { isPublic: !path.isPublic },
     });
     return { id: updated.id, isPublic: updated.isPublic };
+  }
+
+  /**
+   * Toggle a like. Race policy: on a lost race, return the
+   * victorious state WITHOUT touching the counter, the winner
+   * adjusted it exactly once
+   */
+  async toggleLike(userId: string, pathId: string) {
+    try {
+      return await this.doToggleLike(userId, pathId);
+    } catch (err) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError)) throw err;
+      const liked = err.code === 'P2002' ? true : err.code === 'P2025' ? false : null;
+      if (liked === null) throw err;
+      const current = await this.prisma.learningPath.findUnique({
+        where: { id: pathId },
+        select: { likesCount: true },
+      });
+      if (!current) {
+        throw new AppException(ErrorCodes.PATH_NOT_FOUND, `Learning path "${pathId}" was not found.`, HttpStatus.NOT_FOUND);
+      }
+      return { liked, likesCount: current.likesCount };
+    }
+  }
+
+  @Transactional()
+  private async doToggleLike(userId: string, pathId: string) {
+    const tx = this.prisma.tx;
+    const path = await tx.learningPath.findFirst({ where: { id: pathId } });
+    if (!path || (path.userId !== userId && !path.isPublic)) {
+      throw new AppException(ErrorCodes.PATH_NOT_FOUND, `Learning path "${pathId}" was not found.`, HttpStatus.NOT_FOUND);
+    }
+
+    const existing = await tx.pathLike.findUnique({
+      where: { userId_pathId: { userId, pathId } },
+    });
+    if (existing) {
+      await tx.pathLike.delete({ where: { id: existing.id } });
+      const updated = await tx.learningPath.update({
+        where: { id: pathId },
+        data: { likesCount: { decrement: 1 } },
+      });
+      return { liked: false, likesCount: updated.likesCount };
+    }
+
+    await tx.pathLike.create({ data: { userId, pathId } });
+    const updated = await tx.learningPath.update({
+      where: { id: pathId },
+      data: { likesCount: { increment: 1 } },
+    });
+    return { liked: true, likesCount: updated.likesCount };
   }
 
   @Transactional()

@@ -12,7 +12,7 @@ import {
 import { PathsService } from './paths.service.js';
 import { GeneratePathDto } from './dto/generate-path.dto.js';
 import { PathQueryDto } from './dto/path-query.dto.js';
-import { PathResponseDto, NodeProgressResponseDto, FavoriteResponseDto, VisibilityResponseDto } from './dto/path-response.dto.js';
+import { PathResponseDto, NodeProgressResponseDto, FavoriteResponseDto, VisibilityResponseDto, LikeResponseDto } from './dto/path-response.dto.js';
 import { CommunityPathDto } from './dto/community-path.dto.js';
 import { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 import { UpdatePathMetadataDto } from './dto/update-path-metadata.dto.js';
@@ -158,6 +158,23 @@ export class PathsController {
     const userId = this.currentUserId();
     const path = await this.pathsService.updatePathMetadata(userId, pathId, dto);
     return PathMapper.toResponseDto(path, userId);
+  }
+
+  @Post(':pathId/like')
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Like or unlike a public learning path (toggle).',
+    description: 'Idempotent: retry safely with the same Idempotency-Key; the replay returns the original result without toggling again. Send a fresh key per physical tap.',
+  })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Client-generated unique key for this operation.' })
+  @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
+  @ApiEnvelopeResponse(200, 'Like toggled.', LikeResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
+  @ApiEnvelopeError(400, 'Missing Idempotency-Key header.', 'MISSING_IDEMPOTENCY_KEY')
+  @ApiEnvelopeError(404, 'Learning path not found (or private and foreign).', 'PATH_NOT_FOUND')
+  @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
+  toggleLike(@Param('pathId') pathId: string) {
+    return this.pathsService.toggleLike(this.currentUserId(), pathId);
   }
 
   @Post(':pathId/fork')

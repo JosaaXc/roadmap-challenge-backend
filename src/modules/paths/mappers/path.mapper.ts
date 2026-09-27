@@ -20,6 +20,7 @@ export class PathMapper {
       // Owner-only lineage: never leak a (possibly since-privatized)
       // parent title to strangers viewing a public fork.
       forkedFrom: isOwner ? path.forkedFrom : null,
+      likesCount: path.likesCount,
       nodes: path.nodes.map((node) => ({
         id: node.id,
         type: node.type,

@@ -27,6 +27,9 @@ export class CommunityPathDto {
   @ApiProperty({ example: 5, description: 'How many times this path has been forked.' })
   forksCount!: number;
 
+  @ApiProperty({ example: 10, description: 'Total likes.' })
+  likesCount!: number;
+
   @ApiProperty({ type: CommunityPathOwnerDto })
   owner!: CommunityPathOwnerDto;
 
