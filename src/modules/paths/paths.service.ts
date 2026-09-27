@@ -207,6 +207,25 @@ export class PathsService {
     return { ...page, items: page.items.map(withNextStep) };
   }
 
+  async isLikedBy(userId: string, pathId: string): Promise<boolean> {
+    const like = await this.prisma.pathLike.findUnique({
+      where: { userId_pathId: { userId, pathId } },
+      select: { id: true },
+    });
+    return like !== null;
+  }
+
+  async areLikedBy(userId: string, pathIds: string[]): Promise<Set<string>> {
+    const likedIds = new Set<string>();
+    if (pathIds.length === 0) return likedIds;
+    const likes = await this.prisma.pathLike.findMany({
+      where: { userId, pathId: { in: pathIds } },
+      select: { pathId: true },
+    });
+    for (const like of likes) likedIds.add(like.pathId);
+    return likedIds;
+  }
+
   async findPathById(callerUserId: string, pathId: string): Promise<PathWithGraph> {
     const path = await this.prisma.learningPath.findFirst({
       where: { id: pathId },
@@ -340,6 +359,7 @@ export class PathsService {
         forksCount: row.forksCount,
         likesCount: row.likesCount,
         hasLiked: likedIds.has(row.id),
+        isFork: row.forkedFromId !== null,
         owner: { username: row.user.username },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,

@@ -103,6 +103,9 @@ export class PathResponseDto {
   @ApiProperty({ example: 10, description: 'Total likes.' })
   likesCount!: number;
 
+  @ApiProperty({ example: true, description: 'Whether the caller has liked this path.' })
+  hasLiked!: boolean;
+
   @ApiProperty({ type: [PathNodeResponseDto] })
   nodes!: PathNodeResponseDto[];
 

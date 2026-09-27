@@ -50,7 +50,7 @@ export class PathsController {
   @ApiEnvelopeError(422, 'No active courses match the selected answers.', 'INVALID_QUESTION_OPTION')
   async generate(@Body() dto: GeneratePathDto): Promise<PathResponseDto> {
     const path = await this.pathsService.generateDynamicPath(this.currentUserId(), dto);
-    return PathMapper.toResponseDto(path, this.currentUserId());
+    return PathMapper.toResponseDto(path, this.currentUserId(), false);
   }
 
   @Get()
@@ -61,18 +61,26 @@ export class PathsController {
   @ApiEnvelopePaginatedResponse(200, 'Learning paths retrieved successfully.', PathResponseDto)
   @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   async findMine(@Query() dto: PathQueryDto) {
-    const page = await this.pathsService.findMyPaths(this.currentUserId(), dto);
+    const userId = this.currentUserId();
+    const page = await this.pathsService.findMyPaths(userId, dto);
+    const likedIds = await this.pathsService.areLikedBy(
+      userId,
+      page.items.map((item) => item.id),
+    );
     return {
       ...page,
-      items: page.items.map((item) => PathMapper.toResponseDto(item, this.currentUserId())),
+      items: page.items.map((item) => PathMapper.toResponseDto(item, userId, likedIds.has(item.id))),
     };
   }
 
   @Get('community')
   @ApiOperation({
-    summary: 'Discover public community paths (fork them to start your own copy).',
+    summary: '[DEPRECATED] Discover public community paths.',
     description:
-      'Progress shown belongs to the author (social proof). Favorite/fork from here, then track progress on your own copy.',
+      'Deprecated: use GET /paths/community/explore instead (sorting, search and hasLiked flags). ' +
+      'This endpoint is frozen and will be removed in a future major version. ' +
+      'Progress shown belongs to the author (social proof).',
+    deprecated: true,
   })
   @ApiQuery({ name: 'take', required: false, type: Number, description: 'Max items (1-50, default 10).' })
   @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Last id from the previous page.' })
@@ -123,8 +131,9 @@ export class PathsController {
   @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   async findOne(@Param('id') id: string): Promise<PathResponseDto> {
-    const path = await this.pathsService.findPathById(this.currentUserId(), id);
-    return PathMapper.toResponseDto(path, this.currentUserId());
+    const userId = this.currentUserId();
+    const path = await this.pathsService.findPathById(userId, id);
+    return PathMapper.toResponseDto(path, userId, await this.pathsService.isLikedBy(userId, id));
   }
 
   @Patch(':pathId/nodes/:nodeId/complete')
@@ -187,7 +196,7 @@ export class PathsController {
   async updateMetadata(@Param('pathId') pathId: string, @Body() dto: UpdatePathMetadataDto): Promise<PathResponseDto> {
     const userId = this.currentUserId();
     const path = await this.pathsService.updatePathMetadata(userId, pathId, dto);
-    return PathMapper.toResponseDto(path, userId);
+    return PathMapper.toResponseDto(path, userId, await this.pathsService.isLikedBy(userId, pathId));
   }
 
   @Post(':pathId/like')
@@ -222,7 +231,7 @@ export class PathsController {
   @ApiEnvelopeError(409, 'A request with this Idempotency-Key is already in progress.', 'IDEMPOTENT_REQUEST_IN_PROGRESS')
   async fork(@Param('pathId') pathId: string): Promise<PathResponseDto> {
     const path = await this.pathsService.forkPath(this.currentUserId(), pathId);
-    return PathMapper.toResponseDto(path, this.currentUserId());
+    return PathMapper.toResponseDto(path, this.currentUserId(), false);
   }
 
   @Delete(':pathId/nodes/:nodeId')

@@ -2,7 +2,7 @@ import type { PathWithGraph } from '../paths.service.js';
 import type { PathResponseDto } from '../dto/path-response.dto.js';
 
 export class PathMapper {
-  static toResponseDto(path: PathWithGraph, callerUserId: string): PathResponseDto {
+  static toResponseDto(path: PathWithGraph, callerUserId: string, hasLiked: boolean): PathResponseDto {
     const isOwner = path.userId === callerUserId;
     const nextNode = isOwner ? path.nodes.find((node) => !node.isCompleted) : null;
 
@@ -21,6 +21,7 @@ export class PathMapper {
       // parent title to strangers viewing a public fork.
       forkedFrom: isOwner ? path.forkedFrom : null,
       likesCount: path.likesCount,
+      hasLiked,
       nodes: path.nodes.map((node) => ({
         id: node.id,
         type: node.type,
