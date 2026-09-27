@@ -50,13 +50,16 @@ export class QuestionsService {
     const tx = this.prisma.tx;
     const { options, ...questionData } = dto;
 
+    const total = await tx.question.count();
+    const order = Math.min(dto.order, total + 1);
+
     const collision = await tx.question.findFirst({
-      where: { order: dto.order, isActive: true },
+      where: { order, isActive: true },
       select: { id: true },
     });
     if (collision) {
       await tx.question.updateMany({
-        where: { order: { gte: dto.order } },
+        where: { order: { gte: order } },
         data: { order: { increment: 1 } },
       });
     }
@@ -64,6 +67,7 @@ export class QuestionsService {
     const created = await tx.question.create({
       data: {
         ...questionData,
+        order,
         options: {
           create: options.map((opt) => ({
             text: opt.text,
@@ -89,6 +93,24 @@ export class QuestionsService {
       );
     }
     const { options: _options, ...updateData } = dto;
+
+    if (updateData.order !== undefined && updateData.order !== question.order) {
+      const total = await tx.question.count();
+      const newOrder = Math.min(Math.max(1, updateData.order), total);
+      if (newOrder > question.order) {
+        await tx.question.updateMany({
+          where: { id: { not: id }, order: { gt: question.order, lte: newOrder } },
+          data: { order: { decrement: 1 } },
+        });
+      } else {
+        await tx.question.updateMany({
+          where: { id: { not: id }, order: { gte: newOrder, lt: question.order } },
+          data: { order: { increment: 1 } },
+        });
+      }
+      updateData.order = newOrder;
+    }
+
     const updated = await tx.question.update({
       where: { id },
       data: updateData,
@@ -179,7 +201,12 @@ export class QuestionsService {
       return deactivated;
     }
 
+    const deletedOrder = question.order;
     await tx.question.delete({ where: { id } });
+    await tx.question.updateMany({
+      where: { order: { gt: deletedOrder } },
+      data: { order: { decrement: 1 } },
+    });
     await this.invalidateTagsCache();
     return { id, deleted: true };
   }
