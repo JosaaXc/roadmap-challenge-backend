@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import nodemailer, { type Transporter } from 'nodemailer';
+import { passwordResetTemplate } from './templates/password-reset.template.js';
 
 /**
  * Provider-agnostic outbound mail over SMTP (Gmail, Brevo, SES,
@@ -38,17 +39,13 @@ export class MailService implements OnModuleInit {
     return this.configService.get<boolean>('MAIL_ENABLED', false);
   }
 
-  async sendPasswordResetOtp(to: string, otp: string, ttlMinutes: number): Promise<void> {
-    await this.send({
-      to,
-      subject: 'Your password reset code',
-      text:
-        `Your password reset code is: ${otp}\n\n` +
-        `It expires in ${ttlMinutes} minutes. If you did not request it, ignore this email.`,
-    });
+  async sendPasswordResetOtp(to: string, otp: string, ttlMinutes: number, resetUrl: string): Promise<void> {
+    const appName = this.configService.get<string>('APP_NAME', 'CodeQuest');
+    const { subject, text, html } = passwordResetTemplate({ otp, ttlMinutes, resetUrl, appName });
+    await this.send({ to, subject, text, html });
   }
 
-  private async send(options: { to: string; subject: string; text: string }): Promise<void> {
+  private async send(options: { to: string; subject: string; text: string; html: string }): Promise<void> {
     if (!this.transporter) {
       throw new Error('[MAIL] Transporter not initialized: check MAIL_* env vars.');
     }
