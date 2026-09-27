@@ -90,6 +90,32 @@ export const envSchema = z.object({
   // first (sliding window) - prevents unbounded session growth from repeated
   // login attempts/retries.
   MAX_ACTIVE_SESSIONS_PER_USER: z.coerce.number().int().min(1).default(5),
+
+  // Password-reset OTP (configurable per environment)
+  // OTP_LENGTH          : digits of the numeric code (default: 6)
+  // OTP_TTL_SECONDS     : how long a code stays valid in Redis (default: 900 = 15m)
+  // OTP_COOLDOWN_SECONDS: anti-spam window between requests per email (default: 120 = 2m)
+  OTP_LENGTH: z.coerce.number().int().min(4).max(10).default(6),
+  OTP_TTL_SECONDS: z.coerce.number().int().min(60).default(900),
+  OTP_COOLDOWN_SECONDS: z.coerce.number().int().min(10).default(120),
+
+  // Outbound mail (provider-agnostic SMTP: Gmail, Brevo, SES, Mailgun...).
+  // Switching providers = changing these vars + restart, no code changes.
+  // MAIL_ENABLED=false (default) skips sending entirely: the OTP is only
+  // emitted to the debug log (never in production).
+  MAIL_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
+  MAIL_HOST: z.string().optional(),
+  MAIL_PORT: z.coerce.number().int().min(1).max(65_535).default(587),
+  MAIL_SECURE: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
+  MAIL_USER: z.string().optional(),
+  MAIL_PASS: z.string().optional(),
+  MAIL_FROM: z.string().default('no-reply@codequest.app'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
