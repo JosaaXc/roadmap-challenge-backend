@@ -14,6 +14,7 @@ import {
 import type { GeneratePathDto } from './dto/generate-path.dto.js';
 import type { PathQueryDto } from './dto/path-query.dto.js';
 import type { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
+import type { UpdatePathMetadataDto } from './dto/update-path-metadata.dto.js';
 
 export type PathWithGraph = Prisma.LearningPathGetPayload<{
   include: { nodes: { include: { course: { select: { imageUrl: true; url: true } } } }; edges: true };
@@ -417,6 +418,27 @@ export class PathsService {
 
     const progress = await this.recalculateProgress(tx, pathId);
     return { node, progress };
+  }
+
+  @Transactional()
+  async updatePathMetadata(userId: string, pathId: string, dto: UpdatePathMetadataDto) {
+    if (dto.title === undefined && dto.description === undefined) {
+      throw new AppException(
+        ErrorCodes.VALIDATION_ERROR,
+        'Must provide at least title or description',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const tx = this.prisma.tx;
+    await this.assertOwnership(tx, userId, pathId);
+
+    const updated = await tx.learningPath.update({
+      where: { id: pathId },
+      data: { title: dto.title, description: dto.description },
+      include: { ...NODES_ORDERED },
+    });
+    return withNextStep(updated);
   }
 
   @Transactional()

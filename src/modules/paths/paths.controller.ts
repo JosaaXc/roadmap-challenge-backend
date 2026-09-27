@@ -15,6 +15,7 @@ import { PathQueryDto } from './dto/path-query.dto.js';
 import { PathResponseDto, NodeProgressResponseDto, FavoriteResponseDto, VisibilityResponseDto } from './dto/path-response.dto.js';
 import { CommunityPathDto } from './dto/community-path.dto.js';
 import { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
+import { UpdatePathMetadataDto } from './dto/update-path-metadata.dto.js';
 import { PathMapper } from './mappers/path.mapper.js';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator.js';
 
@@ -144,6 +145,19 @@ export class PathsController {
   @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
   toggleVisibility(@Param('pathId') pathId: string) {
     return this.pathsService.toggleVisibility(this.currentUserId(), pathId);
+  }
+
+  @Patch(':pathId/metadata')
+  @ApiOperation({ summary: 'Update the title/description of your own learning path.' })
+  @ApiParam({ name: 'pathId', description: 'Learning path UUID.' })
+  @ApiEnvelopeResponse(200, 'Learning path metadata updated.', PathResponseDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
+  @ApiEnvelopeError(400, 'Empty payload: must provide at least title or description.', 'VALIDATION_ERROR')
+  @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
+  async updateMetadata(@Param('pathId') pathId: string, @Body() dto: UpdatePathMetadataDto): Promise<PathResponseDto> {
+    const userId = this.currentUserId();
+    const path = await this.pathsService.updatePathMetadata(userId, pathId, dto);
+    return PathMapper.toResponseDto(path, userId);
   }
 
   @Post(':pathId/fork')
