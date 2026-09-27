@@ -1,5 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../core/database/prisma.service.js';
+import { RedisService } from '../../core/cache/redis.service.js';
+import { catalogTagsCacheKey } from '../../common/cache/cache-keys.util.js';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { ErrorCodes } from '../../common/exceptions/error-codes.enum.js';
 import { Transactional } from '../../core/database/transactional.decorator.js';
@@ -14,7 +16,10 @@ import type {
 
 @Injectable()
 export class QuestionsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) { }
 
   async getActiveQuestionnaire(): Promise<QuestionResponseDto[]> {
     const questions = await this.prisma.question.findMany({
@@ -27,6 +32,17 @@ export class QuestionsService {
       ...question,
       options: options.map(({ tagsOutput: _tagsOutput, ...option }) => option),
     }));
+  }
+
+  async findAllQuestionsAdmin() {
+    return this.prisma.question.findMany({
+      orderBy: { order: 'asc' },
+      include: { options: true },
+    });
+  }
+
+  private invalidateTagsCache(): Promise<number> {
+    return this.redis.del(catalogTagsCacheKey());
   }
 
   @Transactional()
@@ -45,7 +61,7 @@ export class QuestionsService {
       });
     }
 
-    return tx.question.create({
+    const created = await tx.question.create({
       data: {
         ...questionData,
         options: {
@@ -57,6 +73,8 @@ export class QuestionsService {
       },
       include: { options: true },
     });
+    await this.invalidateTagsCache();
+    return created;
   }
 
   @Transactional()
@@ -71,11 +89,13 @@ export class QuestionsService {
       );
     }
     const { options: _options, ...updateData } = dto;
-    return tx.question.update({
+    const updated = await tx.question.update({
       where: { id },
       data: updateData,
       include: { options: true },
     });
+    await this.invalidateTagsCache();
+    return updated;
   }
 
   @Transactional()
@@ -127,11 +147,13 @@ export class QuestionsService {
       });
     }
 
-    return tx.question.findMany({
+    const reordered = await tx.question.findMany({
       where: { id: { in: ids } },
       orderBy: { order: 'asc' },
       include: { options: true },
     });
+    await this.invalidateTagsCache();
+    return reordered;
   }
 
   @Transactional()
@@ -148,14 +170,17 @@ export class QuestionsService {
 
     const answerCount = await tx.answer.count({ where: { questionId: id } });
     if (answerCount > 0) {
-      return tx.question.update({
+      const deactivated = await tx.question.update({
         where: { id },
         data: { isActive: false },
         include: { options: true },
       });
+      await this.invalidateTagsCache();
+      return deactivated;
     }
 
     await tx.question.delete({ where: { id } });
+    await this.invalidateTagsCache();
     return { id, deleted: true };
   }
 
@@ -171,13 +196,15 @@ export class QuestionsService {
       );
     }
 
-    return tx.questionOption.create({
+    const created = await tx.questionOption.create({
       data: {
         questionId,
         text: dto.text,
         tagsOutput: dto.tagsOutput,
       },
     });
+    await this.invalidateTagsCache();
+    return created;
   }
 
   @Transactional()
@@ -194,10 +221,12 @@ export class QuestionsService {
       );
     }
 
-    return tx.questionOption.update({
+    const updated = await tx.questionOption.update({
       where: { id: optionId },
       data: dto,
     });
+    await this.invalidateTagsCache();
+    return updated;
   }
 
   @Transactional()
@@ -224,6 +253,7 @@ export class QuestionsService {
     }
 
     await tx.questionOption.delete({ where: { id: optionId } });
+    await this.invalidateTagsCache();
     return { id: optionId, deleted: true };
   }
 }

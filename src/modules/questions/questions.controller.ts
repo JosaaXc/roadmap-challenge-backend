@@ -6,6 +6,7 @@ import { Idempotent } from '../../common/decorators/idempotent.decorator.js';
 import { ApiEnvelopeError, ApiEnvelopeResponse } from '../../common/swagger/index.js';
 import { QuestionsService } from './questions.service.js';
 import { QuestionResponseDto } from './dto/questionnaire-response.dto.js';
+import { QuestionAdminResponseDto } from './dto/question-admin-response.dto.js';
 import {
   CreateQuestionDto,
   CreateQuestionOptionDto,
@@ -54,6 +55,22 @@ export class QuestionsController {
   @ApiEnvelopeError(404, 'Question not found.', 'RECORD_NOT_FOUND')
   reorderQuestions(@Body() dto: ReorderQuestionsDto) {
     return this.questionsService.reorderQuestions(dto);
+  }
+
+  // Static route BEFORE '/:id' so 'admin' is never captured as an id.
+  @Get('admin/all')
+  @RequirePermissions('questions:read')
+  @ApiTags('Admin - Questions')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List all questions with inference tags (Admin only).',
+    description: 'Unlike the public questionnaire, options expose tagsOutput so the admin panel can pre-fill edit forms.',
+  })
+  @ApiEnvelopeResponse(200, 'Questions retrieved successfully.', QuestionAdminResponseDto, { isArray: true })
+  @ApiEnvelopeError(401, 'Unauthorized.', 'INVALID_TOKEN')
+  @ApiEnvelopeError(403, 'Forbidden.', 'FORBIDDEN_RESOURCE')
+  findAllQuestionsAdmin() {
+    return this.questionsService.findAllQuestionsAdmin();
   }
 
   @Patch(':id')
