@@ -17,7 +17,11 @@ import type { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 import type { UpdatePathMetadataDto } from './dto/update-path-metadata.dto.js';
 
 export type PathWithGraph = Prisma.LearningPathGetPayload<{
-  include: { nodes: { include: { course: { select: { imageUrl: true; url: true } } } }; edges: true };
+  include: {
+    nodes: { include: { course: { select: { imageUrl: true; url: true } } } };
+    edges: true;
+    forkedFrom: { select: { id: true; title: true } };
+  };
 }>;
 
 export type PathWithNextStep = PathWithGraph & { nextStep: string | null };
@@ -25,6 +29,7 @@ export type PathWithNextStep = PathWithGraph & { nextStep: string | null };
 const NODES_ORDERED = Prisma.validator<Prisma.LearningPathInclude>()({
   nodes: { orderBy: { position: 'asc' }, include: { course: { select: { imageUrl: true, url: true } } } },
   edges: true,
+  forkedFrom: { select: { id: true, title: true } },
 });
 
 function withNextStep<T extends PathWithGraph>(path: T): T & { nextStep: string | null } {
@@ -211,6 +216,7 @@ export class PathsService {
         progress: row.progress,
         imageUrl: row.imageUrl,
         nodeCount: row.nodes.length,
+        forksCount: row.forksCount,
         owner: { username: row.user.username },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
@@ -248,6 +254,7 @@ export class PathsService {
         imageUrl: row.imageUrl,
         isPublic: row.isPublic,
         nodeCount: row.nodes.length,
+        forksCount: row.forksCount,
         owner: { username: row.user.username },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
@@ -509,7 +516,14 @@ export class PathsService {
         progress: 0,
         isFavorite: false,
         isPublic: false,
+        forkedFromId: source.id,
       },
+    });
+
+    // GitHub-style direct counter: atomic SQL increment, never count + 1 in memory.
+    await tx.learningPath.update({
+      where: { id: source.id },
+      data: { forksCount: { increment: 1 } },
     });
 
     const idMap = new Map<string, string>();

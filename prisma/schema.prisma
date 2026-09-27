@@ -176,6 +176,12 @@ model LearningPath {
 
   submission QuestionnaireSubmission?
 
+  // Fork lineage (GitHub-style): direct parent + denormalized direct-fork counter.
+  forkedFromId String?
+  forkedFrom   LearningPath?  @relation("PathForks", fields: [forkedFromId], references: [id], onDelete: SetNull)
+  forks        LearningPath[] @relation("PathForks")
+  forksCount   Int            @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -183,6 +189,7 @@ model LearningPath {
   @@index([userId])
   @@index([deletedAt])
   @@index([isPublic])
+  @@index([forkedFromId])
   @@map("learning_paths")
 }
 

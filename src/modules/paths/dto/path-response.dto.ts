@@ -54,6 +54,14 @@ export class PathEdgeResponseDto {
   isOptional!: boolean;
 }
 
+export class ForkParentResponseDto {
+  @ApiProperty({ format: 'uuid', description: 'Parent path id. Owner-only: null for non-owners.' })
+  id!: string;
+
+  @ApiProperty({ example: 'Ruta Personalizada: Frontend & React' })
+  title!: string;
+}
+
 export class PathResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
@@ -78,6 +86,19 @@ export class PathResponseDto {
 
   @ApiProperty({ example: false })
   isPublic!: boolean;
+
+  @ApiProperty({ example: false, description: 'True when this path was cloned from another path.' })
+  isFork!: boolean;
+
+  @ApiProperty({ example: 0, description: 'How many times this path has been forked (direct forks).' })
+  forksCount!: number;
+
+  @ApiPropertyOptional({
+    type: ForkParentResponseDto,
+    nullable: true,
+    description: 'Parent path (id + title). Owner-only: null for non-owners and non-forks.',
+  })
+  forkedFrom!: ForkParentResponseDto | null;
 
   @ApiProperty({ type: [PathNodeResponseDto] })
   nodes!: PathNodeResponseDto[];
