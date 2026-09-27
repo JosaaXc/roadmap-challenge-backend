@@ -43,4 +43,7 @@ export class CommunityPathDto {
 export class ExploreCommunityPathDto extends CommunityPathDto {
   @ApiProperty({ example: true, description: 'Whether the caller has liked this path.' })
   hasLiked!: boolean;
+
+  @ApiProperty({ example: false, description: 'True when this path was cloned from another path.' })
+  isFork!: boolean;
 }
