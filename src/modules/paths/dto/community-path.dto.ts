@@ -39,3 +39,8 @@ export class CommunityPathDto {
   @ApiProperty({ format: 'date-time' })
   updatedAt!: Date;
 }
+
+export class ExploreCommunityPathDto extends CommunityPathDto {
+  @ApiProperty({ example: true, description: 'Whether the caller has liked this path.' })
+  hasLiked!: boolean;
+}

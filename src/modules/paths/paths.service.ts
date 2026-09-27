@@ -15,6 +15,7 @@ import type { GeneratePathDto } from './dto/generate-path.dto.js';
 import type { PathQueryDto } from './dto/path-query.dto.js';
 import type { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 import type { UpdatePathMetadataDto } from './dto/update-path-metadata.dto.js';
+import type { ExplorePathsQueryDto } from './dto/explore-paths-query.dto.js';
 
 export type PathWithGraph = Prisma.LearningPathGetPayload<{
   include: {
@@ -35,6 +36,37 @@ const NODES_ORDERED = Prisma.validator<Prisma.LearningPathInclude>()({
 function withNextStep<T extends PathWithGraph>(path: T): T & { nextStep: string | null } {
   const next = path.nodes.find((node) => !node.isCompleted) ?? null;
   return { ...path, nextStep: next?.title ?? null };
+}
+
+type ExploreCursor = { sortValue: number | Date; id: string };
+
+/** Opaque keyset cursor: base64url(JSON([sortValue, id])). */
+function encodeExploreCursor(
+  sortBy: string,
+  row: { likesCount: number; createdAt: Date; id: string },
+): string {
+  const payload = sortBy === 'popular' ? [row.likesCount, row.id] : [row.createdAt.toISOString(), row.id];
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+}
+
+function decodeExploreCursor(cursor: string | undefined, sortBy: string): ExploreCursor | null {
+  if (!cursor) return null;
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (!Array.isArray(parsed) || parsed.length !== 2) throw new Error('shape');
+    const [sortValue, id] = parsed;
+    if (typeof id !== 'string' || id.length === 0) throw new Error('shape');
+    if (sortBy === 'popular') {
+      if (typeof sortValue !== 'number' || !Number.isInteger(sortValue) || sortValue < 0) {
+        throw new Error('shape');
+      }
+      return { sortValue, id };
+    }
+    if (typeof sortValue !== 'string' || Number.isNaN(Date.parse(sortValue))) throw new Error('shape');
+    return { sortValue: new Date(sortValue), id };
+  } catch {
+    throw new AppException(ErrorCodes.VALIDATION_ERROR, 'Invalid pagination cursor.', HttpStatus.BAD_REQUEST);
+  }
 }
 
 const BLUEPRINT_TTL_SECONDS = 86_400; // 24h
@@ -223,6 +255,161 @@ export class PathsService {
         updatedAt: row.updatedAt,
       })),
     };
+  }
+
+  async exploreCommunityPaths(callerUserId: string | null, dto: ExplorePathsQueryDto) {
+    const take = dto.take ?? 10;
+    const sortBy = dto.sortBy ?? 'popular';
+    const search = dto.search?.trim();
+
+    const and: Prisma.LearningPathWhereInput[] = [];
+    if (search) {
+      and.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    // Keyset pagination with (sortKey, id) tie-break: likesCount and
+    // createdAt are not unique, so the cursor carries both values and
+    // resumes with an OR clause. Feeds are always desc by design.
+    let orderBy: Prisma.LearningPathOrderByWithRelationInput[];
+    if (sortBy === 'popular') {
+      orderBy = [{ likesCount: 'desc' }, { id: 'desc' }];
+      const cursor = decodeExploreCursor(dto.cursor, sortBy);
+      if (cursor) {
+        and.push({
+          OR: [
+            { likesCount: { lt: cursor.sortValue as number } },
+            { likesCount: cursor.sortValue as number, id: { lt: cursor.id } },
+          ],
+        });
+      }
+    } else {
+      orderBy = [{ createdAt: 'desc' }, { id: 'desc' }];
+      const cursor = decodeExploreCursor(dto.cursor, sortBy);
+      if (cursor) {
+        and.push({
+          OR: [
+            { createdAt: { lt: cursor.sortValue as Date } },
+            { createdAt: cursor.sortValue as Date, id: { lt: cursor.id } },
+          ],
+        });
+      }
+    }
+
+    const rows = await this.prisma.learningPath.findMany({
+      where: { isPublic: true, deletedAt: null, ...(and.length > 0 && { AND: and }) },
+      orderBy,
+      take: take + 1,
+      include: {
+        nodes: { select: { id: true } },
+        user: { select: { username: true } },
+      },
+    });
+
+    let hasNextPage = false;
+    let nextCursor: string | null = null;
+    if (rows.length > take) {
+      hasNextPage = true;
+      const last = rows[take - 1];
+      nextCursor = encodeExploreCursor(sortBy, last);
+    }
+    const page = hasNextPage ? rows.slice(0, take) : rows;
+
+    // Single batched read resolving hasLiked for the whole page.
+    const likedIds = new Set<string>();
+    if (callerUserId && page.length > 0) {
+      const likes = await this.prisma.pathLike.findMany({
+        where: { userId: callerUserId, pathId: { in: page.map((row) => row.id) } },
+        select: { pathId: true },
+      });
+      for (const like of likes) likedIds.add(like.pathId);
+    }
+
+    return {
+      items: page.map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        progress: row.progress,
+        imageUrl: row.imageUrl,
+        nodeCount: row.nodes.length,
+        forksCount: row.forksCount,
+        likesCount: row.likesCount,
+        hasLiked: likedIds.has(row.id),
+        owner: { username: row.user.username },
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      })),
+      meta: { nextCursor, hasNextPage, take },
+    };
+  }
+
+  /**
+   * Contextual suggestions ("related paths"): top-4 public paths ranked
+   * by shared course tags (overlap DESC, likesCount DESC), scored in SQL
+   * with unnest + GROUP BY — O(candidates) without hydrating graphs.
+   * Source must be own or public (same anti-leak rule as fork).
+   */
+  async getRelatedPaths(callerUserId: string, pathId: string) {
+    const source = await this.prisma.learningPath.findFirst({
+      where: { id: pathId },
+      include: { nodes: { include: { course: { select: { tags: true } } } } },
+    });
+    if (!source || (source.userId !== callerUserId && !source.isPublic)) {
+      throw new AppException(ErrorCodes.PATH_NOT_FOUND, `Learning path "${pathId}" was not found.`, HttpStatus.NOT_FOUND);
+    }
+
+    const sourceTags = normalizeTags(source.nodes.flatMap((node) => node.course?.tags ?? []));
+    if (sourceTags.length === 0) return [];
+
+    // Raw SQL bypasses the soft-delete extension: every table filters
+    // deletedAt explicitly. lower() guards legacy mixed-case tags.
+    const scored = await this.prisma.$queryRaw<Array<{ id: string; overlap: bigint }>>`
+      SELECT p.id AS id, COUNT(DISTINCT lower(t.tag)) AS overlap
+      FROM learning_paths p
+      JOIN path_nodes n ON n."pathId" = p.id AND n."deletedAt" IS NULL
+      JOIN courses c ON c.id = n."courseId" AND c."deletedAt" IS NULL,
+      unnest(c.tags) AS t(tag)
+      WHERE p."isPublic" = TRUE
+        AND p."deletedAt" IS NULL
+        AND p.id <> ${pathId}
+        AND lower(t.tag) = ANY(${sourceTags})
+      GROUP BY p.id
+      ORDER BY overlap DESC, MAX(p."likesCount") DESC
+      LIMIT 4
+    `;
+    if (scored.length === 0) return [];
+
+    const rows = await this.prisma.learningPath.findMany({
+      where: { id: { in: scored.map((entry) => entry.id) } },
+      include: {
+        nodes: { select: { id: true } },
+        user: { select: { username: true } },
+      },
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    return scored.flatMap((entry) => {
+      const row = byId.get(entry.id);
+      if (!row) return [];
+      return [{
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        progress: row.progress,
+        imageUrl: row.imageUrl,
+        nodeCount: row.nodes.length,
+        forksCount: row.forksCount,
+        likesCount: row.likesCount,
+        owner: { username: row.user.username },
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      }];
+    });
   }
 
   async findAllPathsAdmin(dto: PathQueryDto) {

@@ -13,7 +13,8 @@ import { PathsService } from './paths.service.js';
 import { GeneratePathDto } from './dto/generate-path.dto.js';
 import { PathQueryDto } from './dto/path-query.dto.js';
 import { PathResponseDto, NodeProgressResponseDto, FavoriteResponseDto, VisibilityResponseDto, LikeResponseDto } from './dto/path-response.dto.js';
-import { CommunityPathDto } from './dto/community-path.dto.js';
+import { CommunityPathDto, ExploreCommunityPathDto } from './dto/community-path.dto.js';
+import { ExplorePathsQueryDto } from './dto/explore-paths-query.dto.js';
 import { CreateCustomNodeDto } from './dto/create-custom-node.dto.js';
 import { UpdatePathMetadataDto } from './dto/update-path-metadata.dto.js';
 import { PathMapper } from './mappers/path.mapper.js';
@@ -23,7 +24,7 @@ import { RequirePermissions } from '../../common/decorators/require-permissions.
 @ApiBearerAuth()
 @Controller('paths')
 export class PathsController {
-  constructor(private readonly pathsService: PathsService) {}
+  constructor(private readonly pathsService: PathsService) { }
 
   private currentUserId(): string {
     const auth = getAuthContext();
@@ -80,6 +81,35 @@ export class PathsController {
   @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
   findCommunity(@Query() dto: PathQueryDto) {
     return this.pathsService.findCommunityPaths(dto);
+  }
+
+  @Get('community/explore')
+  @ApiOperation({
+    summary: 'Explore public paths: popular or recent, searchable, with your like flags.',
+    description: 'Keyset pagination (opaque cursor, always desc). hasLiked reflects the caller.',
+  })
+  @ApiQuery({ name: 'take', required: false, type: Number, description: 'Max items (1-50, default 10).' })
+  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Opaque cursor from the previous page.' })
+  @ApiQuery({ name: 'sortBy', required: false, enum: ['popular', 'recent'], description: 'Sort mode (default popular).' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search in title and description (min 2 chars).' })
+  @ApiEnvelopePaginatedResponse(200, 'Community paths explored successfully.', ExploreCommunityPathDto)
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
+  @ApiEnvelopeError(400, 'Invalid pagination cursor or search.', 'VALIDATION_ERROR')
+  exploreCommunity(@Query() dto: ExplorePathsQueryDto) {
+    return this.pathsService.exploreCommunityPaths(this.currentUserId(), dto);
+  }
+
+  @Get(':pathId/related')
+  @ApiOperation({
+    summary: 'Suggest up to 4 related public paths (shared course tags).',
+    description: 'Contextual suggestions for the path being viewed (own or public). Ranked by tag overlap, then likes.',
+  })
+  @ApiParam({ name: 'pathId', description: 'Source learning path UUID.' })
+  @ApiEnvelopeResponse(200, 'Related paths retrieved successfully.', CommunityPathDto, { isArray: true })
+  @ApiEnvelopeError(401, 'Missing, malformed, invalid or expired access token (refresh and retry on TOKEN_EXPIRED).', 'INVALID_TOKEN')
+  @ApiEnvelopeError(404, 'Learning path not found (or belongs to another user).', 'PATH_NOT_FOUND')
+  getRelatedPaths(@Param('pathId') pathId: string) {
+    return this.pathsService.getRelatedPaths(this.currentUserId(), pathId);
   }
 
   @Get(':id')
