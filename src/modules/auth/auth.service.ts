@@ -335,7 +335,9 @@ export class AuthService {
     await this.redis.set(cooldownKey, '1', cooldownSeconds);
 
     if (this.mailService.isEnabled) {
-      await this.mailService.sendPasswordResetOtp(email, otp, Math.round(ttlSeconds / 60));
+      const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL').replace(/\/$/, '');
+      const resetUrl = `${frontendUrl}/reset-password?email=${encodeURIComponent(email)}`;
+      await this.mailService.sendPasswordResetOtp(email, otp, Math.round(ttlSeconds / 60), resetUrl);
     }
 
     if (this.configService.get<string>('NODE_ENV', 'development') !== 'production') {
