@@ -8,6 +8,7 @@ import {
 import { Request, Response } from 'express';
 import { tracingContext } from '../../common/middlewares/tracing.context.js';
 import { PinoLogger } from 'nestjs-pino';
+import { Prisma } from '@prisma/client';
 import { AppException } from '../../common/exceptions/app.exception.js';
 import { ErrorCodes } from '../../common/exceptions/error-codes.enum.js';
 
@@ -61,6 +62,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           errorCode = ErrorCodes.VALIDATION_ERROR;
           errorMessage = 'Validation failed';
           details = payloadObj.message;
+        } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+          if (exception.code === 'P2025') {
+            httpStatus = HttpStatus.NOT_FOUND;
+            errorCode = ErrorCodes.RECORD_NOT_FOUND;
+            errorMessage = 'The requested record was not found.';
+          }
         } else {
           errorCode = payloadObj.error
             ? String(payloadObj.error).toUpperCase().replace(/\s+/g, '_')
