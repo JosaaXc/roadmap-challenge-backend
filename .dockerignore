@@ -1,0 +1,14 @@
+# Keep the build context lean: no deps, build output, VCS, secrets, logs or tests.
+node_modules
+dist
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+npm-debug.log
+coverage
+test
+*.spec.ts
+.vscode
+.idea
