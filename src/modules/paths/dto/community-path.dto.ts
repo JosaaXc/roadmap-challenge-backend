@@ -3,6 +3,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class CommunityPathOwnerDto {
   @ApiProperty({ example: 'fernando_h' })
   username!: string;
+
+  @ApiPropertyOptional({ type: 'string', nullable: true, example: 'https://api.dicebear.com/7.x/shapes/svg?seed=fernando' })
+  avatarUrl!: string | null;
 }
 
 export class CommunityPathDto {
@@ -44,6 +47,12 @@ export class ExploreCommunityPathDto extends CommunityPathDto {
   @ApiProperty({ example: true, description: 'Whether the caller has liked this path.' })
   hasLiked!: boolean;
 
-  @ApiProperty({ example: false, description: 'True when this path was cloned from another path.' })
+  @ApiProperty({ example: false, description: 'Whether this path itself was cloned from another path.' })
   isFork!: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Whether the caller already owns a fork of this path (viewer-relative, like hasLiked).',
+  })
+  hasForked!: boolean;
 }

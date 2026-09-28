@@ -241,7 +241,7 @@ export class PathsService {
     type CommunityRow = Prisma.LearningPathGetPayload<{
       include: {
         nodes: { select: { id: true } };
-        user: { select: { username: true } };
+        user: { select: { username: true, avatarUrl: true } };
       };
     }>;
     const delegate: CursorFindManyDelegate<CommunityRow, Prisma.LearningPathFindManyArgs> = {
@@ -253,7 +253,7 @@ export class PathsService {
         where: { isPublic: true },
         include: {
           nodes: { select: { id: true } },
-          user: { select: { username: true } },
+          user: { select: { username: true, avatarUrl: true } },
         },
       },
       dto,
@@ -269,7 +269,7 @@ export class PathsService {
         nodeCount: row.nodes.length,
         forksCount: row.forksCount,
         likesCount: row.likesCount,
-        owner: { username: row.user.username },
+        owner: { username: row.user.username, avatarUrl: row.user.avatarUrl },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       })),
@@ -320,12 +320,17 @@ export class PathsService {
     }
 
     const rows = await this.prisma.learningPath.findMany({
-      where: { isPublic: true, deletedAt: null, ...(and.length > 0 && { AND: and }) },
+      where: {
+        isPublic: true,
+        deletedAt: null,
+        ...(callerUserId && { userId: { not: callerUserId } }),
+        ...(and.length > 0 && { AND: and }),
+      },
       orderBy,
       take: take + 1,
       include: {
         nodes: { select: { id: true } },
-        user: { select: { username: true } },
+        user: { select: { username: true, avatarUrl: true } },
       },
     });
 
@@ -338,14 +343,25 @@ export class PathsService {
     }
     const page = hasNextPage ? rows.slice(0, take) : rows;
 
-    // Single batched read resolving hasLiked for the whole page.
+    // Two batched reads resolving viewer-relative flags for the whole page.
     const likedIds = new Set<string>();
+    const forkedIds = new Set<string>();
     if (callerUserId && page.length > 0) {
-      const likes = await this.prisma.pathLike.findMany({
-        where: { userId: callerUserId, pathId: { in: page.map((row) => row.id) } },
-        select: { pathId: true },
-      });
+      const ids = page.map((row) => row.id);
+      const [likes, forks] = await Promise.all([
+        this.prisma.pathLike.findMany({
+          where: { userId: callerUserId, pathId: { in: ids } },
+          select: { pathId: true },
+        }),
+        this.prisma.learningPath.findMany({
+          where: { userId: callerUserId, forkedFromId: { in: ids } },
+          select: { forkedFromId: true },
+        }),
+      ]);
       for (const like of likes) likedIds.add(like.pathId);
+      for (const fork of forks) {
+        if (fork.forkedFromId) forkedIds.add(fork.forkedFromId);
+      }
     }
 
     return {
@@ -360,7 +376,8 @@ export class PathsService {
         likesCount: row.likesCount,
         hasLiked: likedIds.has(row.id),
         isFork: row.forkedFromId !== null,
-        owner: { username: row.user.username },
+        hasForked: forkedIds.has(row.id),
+        owner: { username: row.user.username, avatarUrl: row.user.avatarUrl },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       })),
@@ -408,7 +425,7 @@ export class PathsService {
       where: { id: { in: scored.map((entry) => entry.id) } },
       include: {
         nodes: { select: { id: true } },
-        user: { select: { username: true } },
+        user: { select: { username: true, avatarUrl: true } },
       },
     });
     const byId = new Map(rows.map((row) => [row.id, row]));
@@ -425,7 +442,7 @@ export class PathsService {
         nodeCount: row.nodes.length,
         forksCount: row.forksCount,
         likesCount: row.likesCount,
-        owner: { username: row.user.username },
+        owner: { username: row.user.username, avatarUrl: row.user.avatarUrl },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       }];
@@ -436,7 +453,7 @@ export class PathsService {
     type AdminRow = Prisma.LearningPathGetPayload<{
       include: {
         nodes: { select: { id: true } };
-        user: { select: { username: true } };
+        user: { select: { username: true, avatarUrl: true } };
       };
     }>;
     const delegate: CursorFindManyDelegate<AdminRow, Prisma.LearningPathFindManyArgs> = {
@@ -447,7 +464,7 @@ export class PathsService {
       {
         include: {
           nodes: { select: { id: true } },
-          user: { select: { username: true } },
+          user: { select: { username: true, avatarUrl: true } },
         },
       },
       dto,
@@ -464,7 +481,7 @@ export class PathsService {
         nodeCount: row.nodes.length,
         forksCount: row.forksCount,
         likesCount: row.likesCount,
-        owner: { username: row.user.username },
+        owner: { username: row.user.username, avatarUrl: row.user.avatarUrl },
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       })),
